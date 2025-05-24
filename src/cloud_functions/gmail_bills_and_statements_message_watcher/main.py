@@ -29,7 +29,7 @@ def refresh_watch(request):
 
     db = firestore.client(database_id="gmail-app")
 
-    doc_ref = db.collection("user_refresh_watch").document(request_json["userId"])
+    doc_ref = db.collection("user_refresh_watch").document("me")
     doc_ref.set({"historyId": "1234567890", "expiration": "1431990098200"})
 
     return "SUCCESS"
