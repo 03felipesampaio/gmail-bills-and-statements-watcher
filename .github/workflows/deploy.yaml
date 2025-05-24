@@ -36,6 +36,15 @@ jobs:
         with:
           project_id: "${{ env.PROJECT_ID }}"
 
+      - name: "Install uv"
+        run: |
+          pip install uv
+
+      - name: "Generate requirements.txt from uv.lock"
+        run: |
+          uv pip compile --generate-hashes --output-file=requirements.txt uv.lock
+          cp requirements.txt src/cloud_functions/gmail_bills_and_statements_message_watcher/requirements.txt
+
       - name: "Deploy Cloud Function"
         run: |-
           gcloud functions deploy gmail-bills-and-statements-message-watcher \
@@ -43,4 +52,4 @@ jobs:
             --region=$REGION \
             --runtime=$RUNTIME \
             --entry-point="refresh_watch" \
-            --source=src/cloud_functions/gmail_bills_and_statements_message_watcher\
+            --source=src/cloud_functions/gmail_bills_and_statements_message_watcher
