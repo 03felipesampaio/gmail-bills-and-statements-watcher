@@ -9,9 +9,9 @@ env:
   PROJECT_ID: ${{ secrets.PROJECT_ID }}
   REGION: ${{ secrets.PROJECT_REGION }}
   RUNTIME: python312
+  FUNCTION_NAME: gmail-bills-and-statements-message-watcher
   # CLOUD_RUN_JOB_NAME: ${{ secrets.CLOUD_RUN_JOB_NAME }}
   # CLOUD_RUN_CONTAINER_NAME: ${{ secrets.CLOUD_RUN_CONTAINER_NAME }}
-  # FUNCTION_NAME: ${{ secrets.FUNCTION_NAME }}
 
 jobs:
   deploy-watch-refresh:
@@ -48,7 +48,7 @@ jobs:
 
       - name: "Deploy Cloud Function"
         run: |-
-          gcloud functions deploy gmail-bills-and-statements-message-watcher \
+          gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --project=${{ env.PROJECT_ID }}\
             --region=${{ env.REGION }}\
             --runtime=${{ env.RUNTIME }}\
@@ -56,3 +56,16 @@ jobs:
             --no-allow-unauthenticated \
             --source=src/cloud_functions/gmail_bills_and_statements_message_watcher \
             --entry-point=refresh_watch \
+
+      - name: "Get Cloud Function URL"
+        id: get-function-url
+        run: |
+          URL=$(gcloud functions describe ${{ env.FUNCTION_NAME }} \
+            --project=${{ env.PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --format='value(httpsTrigger.url)')
+          echo "function_url=$URL" >> $GITHUB_OUTPUT
+
+      - name: "Use Function URL"
+        run: |
+          echo "The function URL is ${{ steps.get-function-url.outputs.function_url }}"
