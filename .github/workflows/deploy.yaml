@@ -66,6 +66,15 @@ jobs:
             --format='value(serviceConfig.uri)')
           echo "function_url=$URL" >> $GITHUB_OUTPUT
 
-      - name: "Use Function URL"
+      - name: "Create Cloud Schedule job"
         run: |
-          echo "The function URL is ${{ steps.get-function-url.outputs.function_url }}"
+          gcloud scheduler jobs create http call_gmail_watch_refresher \
+            --project=${{ env.PROJECT_ID }} \
+            --location=${{ env.REGION }} \
+            --schedule="0 3 */5 * *" \
+            --uri="${{ steps.get-function-url.outputs.function_url }}" \
+            --http-method=POST \
+            --message-body='{"userId": "me"}' \
+            --time-zone="America/Sao_Paulo"
+        # run: |
+        #   echo "The function URL is ${{ steps.get-function-url.outputs.function_url }}"
