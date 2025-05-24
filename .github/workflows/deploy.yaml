@@ -68,13 +68,14 @@ jobs:
 
       - name: "Create Cloud Schedule job"
         run: |
-          gcloud scheduler jobs create http call_gmail_watch_refresher \
+          gcloud scheduler jobs update http call_gmail_watch_refresher \
             --project=${{ env.PROJECT_ID }} \
             --location=${{ env.REGION }} \
             --schedule="0 3 */5 * *" \
             --uri="${{ steps.get-function-url.outputs.function_url }}" \
             --http-method=POST \
             --message-body='{"userId": "me"}' \
-            --time-zone="America/Sao_Paulo"
+            --time-zone="America/Sao_Paulo" \
+            -- description="Gmail watcher needs to run every 7 days at max. This job runs each 5 days" \
         # run: |
         #   echo "The function URL is ${{ steps.get-function-url.outputs.function_url }}"
