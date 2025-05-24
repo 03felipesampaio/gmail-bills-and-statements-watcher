@@ -46,16 +46,16 @@ jobs:
           uv pip freeze > requirements.txt
           cp requirements.txt src/cloud_functions/gmail_bills_and_statements_message_watcher/requirements.txt
 
-      # - name: "Deploy Cloud Function"
-      #   run: |-
-      #     gcloud functions deploy ${{ env.FUNCTION_NAME }} \
-      #       --project=${{ env.PROJECT_ID }}\
-      #       --region=${{ env.REGION }}\
-      #       --runtime=${{ env.RUNTIME }}\
-      #       --trigger-http  \
-      #       --no-allow-unauthenticated \
-      #       --source=src/cloud_functions/gmail_bills_and_statements_message_watcher \
-      #       --entry-point=refresh_watch \
+      - name: "Deploy Cloud Function"
+        run: |-
+          gcloud functions deploy ${{ env.FUNCTION_NAME }} \
+            --project=${{ env.PROJECT_ID }}\
+            --region=${{ env.REGION }}\
+            --runtime=${{ env.RUNTIME }}\
+            --trigger-http  \
+            --no-allow-unauthenticated \
+            --source=src/cloud_functions/gmail_bills_and_statements_message_watcher \
+            --entry-point=refresh_watch \
 
       - name: "Get Cloud Function URL"
         id: get-function-url
