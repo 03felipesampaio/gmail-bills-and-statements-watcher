@@ -8,14 +8,13 @@ on:
 env:
   PROJECT_ID: ${{ secrets.PROJECT_ID }}
   REGION: ${{ secrets.PROJECT_REGION }}
-  BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
-  CLOUD_RUN_JOB_NAME: ${{ secrets.CLOUD_RUN_JOB_NAME }}
-  CLOUD_RUN_CONTAINER_NAME: ${{ secrets.CLOUD_RUN_CONTAINER_NAME }}
-  FUNCTION_NAME: ${{ secrets.FUNCTION_NAME }}
   RUNTIME: python312
+  # CLOUD_RUN_JOB_NAME: ${{ secrets.CLOUD_RUN_JOB_NAME }}
+  # CLOUD_RUN_CONTAINER_NAME: ${{ secrets.CLOUD_RUN_CONTAINER_NAME }}
+  # FUNCTION_NAME: ${{ secrets.FUNCTION_NAME }}
 
 jobs:
-  deploy:
+  deploy-watch-refresh:
     runs-on: "ubuntu-latest"
 
     permissions:
@@ -37,12 +36,11 @@ jobs:
         with:
           project_id: "${{ env.PROJECT_ID }}"
 
-      - name: Deploy Cloud Function
+      - name: "Deploy Cloud Function"
         run: |-
-          gcloud functions deploy $FUNCTION_NAME \
+          gcloud functions deploy gmail-bills-and-statements-message-watcher \
             --project=$PROJECT_ID \
             --region=$REGION \
             --runtime=$RUNTIME \
-            --trigger-bucket=$BUCKET_NAME \
-            --entry-point="trigger_dbt_run" \
-            --source=./ \
+            --entry-point="refresh_watch" \
+            --source=src/cloud_functions/gmail_bills_and_statements_message_watcher\
