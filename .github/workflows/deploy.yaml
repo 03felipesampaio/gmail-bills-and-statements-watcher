@@ -76,6 +76,6 @@ jobs:
             --http-method=POST \
             --message-body='{"userId": "me"}' \
             --time-zone="America/Sao_Paulo" \
-            -- description="Gmail watcher needs to run every 7 days at max. This job runs each 5 days" \
+            --description="Gmail watcher needs to run every 7 days at max. This job runs each 5 days" \
         # run: |
         #   echo "The function URL is ${{ steps.get-function-url.outputs.function_url }}"
