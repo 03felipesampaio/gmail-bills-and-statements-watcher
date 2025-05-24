@@ -12,6 +12,7 @@ env:
   FUNCTION_NAME: gmail-bills-and-statements-message-watcher
   # CLOUD_RUN_JOB_NAME: ${{ secrets.CLOUD_RUN_JOB_NAME }}
   # CLOUD_RUN_CONTAINER_NAME: ${{ secrets.CLOUD_RUN_CONTAINER_NAME }}
+  SERVICE_ACCOUNT: cloud-scheduler-invoker@${{ secrets.PROJECT_ID }}.iam.gserviceaccount.com # Added service account email
 
 jobs:
   deploy-watch-refresh:
@@ -66,7 +67,16 @@ jobs:
             --format='value(serviceConfig.uri)')
           echo "function_url=$URL" >> $GITHUB_OUTPUT
 
-      - name: "Create Cloud Schedule job"
+      - name: "Grant Cloud Run Invoker role to Service Account" # Modified for 2nd Gen
+        run: |
+          gcloud run services add-iam-policy-binding ${{ env.FUNCTION_NAME }} \
+            --project=${{ env.PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --member="serviceAccount:${{ env.SERVICE_ACCOUNT }}" \
+            --role="roles/run.invoker" \
+            --platform=managed
+
+      - name: "Create Cloud Schedule job" # Modified for authentication
         run: |
           gcloud scheduler jobs update http call_gmail_watch_refresher \
             --project=${{ env.PROJECT_ID }} \
@@ -77,5 +87,5 @@ jobs:
             --message-body='{"userId": "me"}' \
             --time-zone="America/Sao_Paulo" \
             --description="Gmail watcher needs to run every 7 days at max. This job runs each 5 days" \
-        # run: |
-        #   echo "The function URL is ${{ steps.get-function-url.outputs.function_url }}"
+            --oidc-service-account-email="${{ env.SERVICE_ACCOUNT }}" \ # Added authentication
+            --oidc-token-audience="${{ steps.get-function-url.outputs.function_url }}" # Added authentication
