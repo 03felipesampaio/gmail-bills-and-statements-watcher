@@ -63,7 +63,7 @@ jobs:
           URL=$(gcloud functions describe ${{ env.FUNCTION_NAME }} \
             --project=${{ env.PROJECT_ID }} \
             --region=${{ env.REGION }} \
-            --format='value(httpsTrigger.url)')
+            --format='value(httpsTrigger.uri)')
           echo "function_url=$URL" >> $GITHUB_OUTPUT
 
       - name: "Use Function URL"
