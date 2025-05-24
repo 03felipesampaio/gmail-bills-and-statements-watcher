@@ -52,5 +52,6 @@ jobs:
             --project=$PROJECT_ID \
             --region=$REGION \
             --runtime=$RUNTIME \
+            --trigger-http  \
             --entry-point="refresh_watch" \
             --source=src/cloud_functions/gmail_bills_and_statements_message_watcher
