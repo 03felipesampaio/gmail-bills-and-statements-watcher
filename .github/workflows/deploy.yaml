@@ -49,9 +49,9 @@ jobs:
       - name: "Deploy Cloud Function"
         run: |-
           gcloud functions deploy gmail-bills-and-statements-message-watcher \
-            --project=$PROJECT_ID \
-            --region=$REGION \
-            --runtime=$RUNTIME \
+            --project=${{ env.PROJECT_ID }}\
+            --region=${{ env.REGION }}\
+            --runtime=$${{ env.RUNTIME }}\
             --trigger-http  \
             --no-allow-unauthenticated \
             --source=src/cloud_functions/gmail_bills_and_statements_message_watcher
