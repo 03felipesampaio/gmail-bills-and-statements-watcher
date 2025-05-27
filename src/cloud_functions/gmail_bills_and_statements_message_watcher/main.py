@@ -1,13 +1,25 @@
 from datetime import datetime
+import os
 
 from loguru import logger
+from dotenv import load_dotenv
 
 import functions_framework
+import firebase_admin
+from firebase_admin import firestore
 
-import repository
-import gmail
+from . import repository
+from . import gmail
 
 logger.info("Starting Gmail Bills and Statements Message Watcher")
+load_dotenv()
+
+GCP_PROJECT_ID = os.environ["GCP_PROJECT_ID"]
+GCP_REGION = os.environ["GCP_REGION"]
+PUBSUB_TOPIC = os.environ["PUBSUB_TOPIC"]
+FIRESTORE_DATABASE_ID = os.environ.get("FIRESTORE_DATABASE_ID", "(default)")
+
+firebase_sdk = firebase_admin.initialize_app()
 
 
 @functions_framework.http
@@ -24,11 +36,11 @@ def refresh_watch(request):
     # Receive request data
     # request_json = request.get_json(silent=True)
     # request_args = request.args
+    
+    db = repository.FirestoreRepository(firestore.client(database_id=FIRESTORE_DATABASE_ID))
 
-    # Execute query to get users ids
-    # Execute query to get users last expiration date
-    users_last_refresh = repository.get_users_last_refresh(None)
     # If the expiration date is less than current date is due, we trow a warning, informing that a synchronization is needed
+    users_last_refresh = db.get_users_last_refresh()
 
     # For each user, we will make a request to the Gmail API to refresh the watch
     responses = []
@@ -36,13 +48,11 @@ def refresh_watch(request):
         watcher_response = gmail.refresh_gmail_watcher(
             None,  # Replace with actual Gmail service instance
             user.user_id,
-            "projects/your-project-id/topics/your-topic-name",
-            labelsIds=["INBOX"],
+            PUBSUB_TOPIC,
         )
         responses.append(watcher_response)
 
-        repository.update_user_last_refresh(
-            None,  # Replace with actual database instance
+        db.update_user_last_refresh(
             user.user_id,
             last_refresh=watcher_response["historyId"],
             expiration=datetime.fromtimestamp(int(watcher_response["expiration"])),
@@ -53,12 +63,4 @@ def refresh_watch(request):
             f"Refreshed watch for user {user.user_id} || user_id: {user.user_id} || historyId: {watcher_response['historyId']} || expiration: {datetime.fromtimestamp(int(watcher_response['expiration']))}"
         )
 
-    # Then we will add the new historyId and expiration date to the Firestore database
-    # db = firestore.client(database_id="gmail-app")
-
-    # doc_ref = db.collection("user_refresh_watch").document("me")
-    # doc_ref.set({"historyId": "1234567890", "expiration": "1431990098200"})
-
-    # Then we will return a success message
-
-    return "SUCCESS"
+    return "SUCCESS", 200
