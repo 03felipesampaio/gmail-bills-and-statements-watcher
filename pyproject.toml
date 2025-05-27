@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "firebase-admin>=6.8.0",
     "functions-framework>=3.8.3",
+    "google-cloud-firestore>=2.20.2",
     "loguru>=0.7.3",
     "python-dotenv>=1.1.0",
 ]
