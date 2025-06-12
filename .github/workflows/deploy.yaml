@@ -56,7 +56,7 @@ jobs:
             --trigger-http  \
             --no-allow-unauthenticated \
             --source=src/cloud_functions/gmail_bills_and_statements_message_watcher \
-            --entry-point=refresh_watch \
+            --entry-point=refresh_watch
 
       - name: "Get Cloud Function URL"
         id: get-function-url
