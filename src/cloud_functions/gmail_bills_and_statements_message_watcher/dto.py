@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 @dataclass
-class UserRecord:
+class UserWatchRecord:
     user_id: str
     last_refresh: datetime
     expiration: datetime
