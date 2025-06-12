@@ -1,25 +1,29 @@
-from datetime import datetime
-import os
-
+from pathlib import Path
+import yaml
 from loguru import logger
-from dotenv import load_dotenv
 
 import functions_framework
-import firebase_admin
-from firebase_admin import firestore
+from google.cloud import firestore
 
 from . import repository
-from . import gmail
+# from . import gmail
 
 logger.info("Starting Gmail Bills and Statements Message Watcher")
-load_dotenv()
 
-GCP_PROJECT_ID = os.environ["GCP_PROJECT_ID"]
-GCP_REGION = os.environ["GCP_REGION"]
-PUBSUB_TOPIC = os.environ["PUBSUB_TOPIC"]
-FIRESTORE_DATABASE_ID = os.environ.get("FIRESTORE_DATABASE_ID", "(default)")
+ENV_VARS_YAML_PATH = Path("./env.yaml")
 
-firebase_sdk = firebase_admin.initialize_app()
+if ENV_VARS_YAML_PATH.exists():
+    ENV_VARS = yaml.safe_load(ENV_VARS_YAML_PATH.open(encoding="utf8"))
+else:
+    raise FileNotFoundError("Failed to find YAML file with variables")
+
+
+PROJECT_ID = ENV_VARS["PROJECT_ID"]
+REGION = ENV_VARS["REGION"]
+PUBSUB_TOPIC = ENV_VARS["PUBSUB_TOPIC"]
+FIRESTORE_DATABASE_ID = ENV_VARS["FIRESTORE_DATABASE_ID"]
+
+db = repository.FirestoreRepository(firestore.Client(database=FIRESTORE_DATABASE_ID))
 
 
 @functions_framework.http
@@ -36,31 +40,22 @@ def refresh_watch(request):
     # Receive request data
     # request_json = request.get_json(silent=True)
     # request_args = request.args
-    
-    db = repository.FirestoreRepository(firestore.client(database_id=FIRESTORE_DATABASE_ID))
 
-    # If the expiration date is less than current date is due, we trow a warning, informing that a synchronization is needed
-    users_last_refresh = db.get_users_last_refresh()
+    # gmail_service = gmail.GmailAPIService(None)
 
-    # For each user, we will make a request to the Gmail API to refresh the watch
-    responses = []
-    for user in users_last_refresh:
-        watcher_response = gmail.refresh_gmail_watcher(
-            None,  # Replace with actual Gmail service instance
-            user.user_id,
-            PUBSUB_TOPIC,
-        )
-        responses.append(watcher_response)
+    # # If the expiration date is less than current date is due, we trow a warning, informing that a synchronization is needed
+    # # db.delete_user_me()
+    user = db.get_user_me()
+    logger.info(f"Queried user '{user.id}' || {user.to_dict()}")
 
-        db.update_user_last_refresh(
-            user.user_id,
-            last_refresh=watcher_response["historyId"],
-            expiration=datetime.fromtimestamp(int(watcher_response["expiration"])),
-            history_id=watcher_response["historyId"],
-        )
+    # watch_response = gmail_service.watch(user.id, PUBSUB_TOPIC)
+    # logger.info(f"Refreshed Pub/Sub watch for user '{user.id}' || {watch_response}")
 
-        logger.info(
-            f"Refreshed watch for user {user.user_id} || user_id: {user.user_id} || historyId: {watcher_response['historyId']} || expiration: {datetime.fromtimestamp(int(watcher_response['expiration']))}"
-        )
+    # db.update_user_last_refresh(
+    #     user.id,
+    #     datetime.now(),
+    #     datetime.fromtimestamp(int(watch_response["expiration"])),
+    #     history_id=watch_response["historyId"],
+    # )
 
-    return "SUCCESS", 200
+    return ("SUCCESS", 200)
