@@ -93,7 +93,7 @@ def oauth_callback_function(request):
 
         logger.info(f"User email identified: {user_email}")
         db_client.document(f"users/{user_email}").set(
-            {"authTokens": creds.to_json()}, merge=True
+            {"authTokens": json.loads(creds.to_json())}, merge=True
         )
         logger.info(f"OAuth tokens for {user_email} successfully saved to Firestore.")
     except ValueError as e:
