@@ -4,6 +4,7 @@ from loguru import logger
 
 import functions_framework
 from google.cloud import firestore
+from google.cloud import secretmanager
 
 from . import repository
 # from . import gmail
@@ -17,12 +18,17 @@ if ENV_VARS_YAML_PATH.exists():
 else:
     raise FileNotFoundError("Failed to find YAML file with variables")
 
-
+GMAIL_CLIENT_ID_SECRET = ENV_VARS["APP_CLIENT_ID_SECRET"]
 PROJECT_ID = ENV_VARS["PROJECT_ID"]
 REGION = ENV_VARS["REGION"]
 PUBSUB_TOPIC = ENV_VARS["PUBSUB_TOPIC"]
 FIRESTORE_DATABASE_ID = ENV_VARS["FIRESTORE_DATABASE_ID"]
 
+gmail_client_id = (
+    secretmanager.SecretManagerServiceClient()
+    .access_secret_version({"name": GMAIL_CLIENT_ID_SECRET})
+    .payload.data.decode("UTF-8")
+)
 db = repository.FirestoreRepository(firestore.Client(database=FIRESTORE_DATABASE_ID))
 
 
