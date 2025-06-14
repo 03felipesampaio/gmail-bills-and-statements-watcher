@@ -23,6 +23,14 @@ class FirestoreRepository:
             user = self.initialize_user_data()
 
         return user
+    
+    def get_all_users_iterator(self):
+        """Get a firestore stream from users collections. Iterate to get all users.
+
+        Returns:
+            Iterator: An interator to fetch all documents.
+        """
+        return self.db.collection("users").stream()
 
     def delete_user_me(self):
         """
@@ -34,6 +42,26 @@ class FirestoreRepository:
 
         # Optionally, you can return a confirmation message or status
         return
+    
+    def update_user_document(self, user):
+        user_data = user.to_dict()
+        
+        user_obj = {
+            "email": user.id,
+            "watchConfig": user_data.get("watchConfig", {}),
+            "currentWatch": user_data.get("currentWatch", {})
+        }
+        
+        self.db.document("users/"+user.id).set(user_obj, merge=True)
+        
+        return self.db.document("users/"+user.id).get()
+    
+
+    def update_user_oauth_token(self, user_id: str, token: dict):
+        self.db.document("users/"+user_id).set({"authTokens": token}, merge=True)
+        
+        return self.db.document("users/"+user_id).get()
+        
 
     def update_user_last_refresh(
         self,
@@ -45,7 +73,7 @@ class FirestoreRepository:
         # Move the user old record to the 'history' subcollection
         old_record = self.db.collection("users").document(user_id).get()
         
-        logger.info(f"Queried old record || {old_record.to_dict()}")
+        logger.info(f"Queried old record of user '{user_id}'")
 
         self.db.document(f"users/{user_id}").update(
             {
@@ -117,28 +145,3 @@ class FirestoreRepository:
 
         return new_user_data
 
-
-# def get_users_last_refresh(db) -> list[dto.UserRecord]:
-#     return [dto.UserRecord("me", datetime.now(), datetime.now(), "5672")]
-
-
-# def update_user_last_refresh(
-#     db, user_id: str, last_refresh: datetime, expiration: datetime, history_id: str
-# ) -> dto.UserRecord:
-#     """
-#     Update the user's last refresh and expiration in the database.
-#     Args:
-#         db: The database connection.
-#         user_id (str): The user's ID.
-#         last_refresh (datetime): The last refresh timestamp in milliseconds.
-#         expiration (datetime): The expiration timestamp in milliseconds.
-#     Returns:
-#         dto.UserRecord: The updated user record.
-#     """
-#     # This function would update the user's last refresh and expiration in the database
-#     return dto.UserRecord(
-#         user_id=user_id,
-#         last_refresh=last_refresh,
-#         expiration=expiration,
-#         history_id="1234567890",  # This would be the new history ID from the Gmail API response
-#     )
