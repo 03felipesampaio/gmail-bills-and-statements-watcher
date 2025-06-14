@@ -1,13 +1,15 @@
 from pathlib import Path
 import yaml
 from loguru import logger
+import json
+from datetime import datetime
 
 import functions_framework
 from google.cloud import firestore
 from google.cloud import secretmanager
 
 from . import repository
-# from . import gmail
+from . import gmail
 
 logger.info("Starting Gmail Bills and Statements Message Watcher")
 
@@ -24,11 +26,18 @@ REGION = ENV_VARS["REGION"]
 PUBSUB_TOPIC = ENV_VARS["PUBSUB_TOPIC"]
 FIRESTORE_DATABASE_ID = ENV_VARS["FIRESTORE_DATABASE_ID"]
 
-gmail_client_id = (
-    secretmanager.SecretManagerServiceClient()
-    .access_secret_version({"name": GMAIL_CLIENT_ID_SECRET})
-    .payload.data.decode("UTF-8")
-)
+
+def get_client_credentials_from_secret_manager() -> dict:
+    """
+    Fetches the OAuth client ID and client secret from Google Secret Manager.
+    Returns the client configuration as a dictionary.
+    """
+    client = secretmanager.SecretManagerServiceClient()
+    response = client.access_secret_version(request={"name": GMAIL_CLIENT_ID_SECRET})
+    return json.loads(response.payload.data.decode("UTF-8"))
+
+
+gmail_client_id = get_client_credentials_from_secret_manager()
 db = repository.FirestoreRepository(firestore.Client(database=FIRESTORE_DATABASE_ID))
 
 
@@ -47,21 +56,22 @@ def refresh_watch(request):
     # request_json = request.get_json(silent=True)
     # request_args = request.args
 
-    # gmail_service = gmail.GmailAPIService(None)
+    for user_old in db.get_all_users_iterator():
+        user = db.update_user_document(user_old)
+        user_data = user.to_dict()
 
-    # # If the expiration date is less than current date is due, we trow a warning, informing that a synchronization is needed
-    # # db.delete_user_me()
-    user = db.get_user_me()
-    logger.info(f"Queried user '{user.id}' || {user.to_dict()}")
+        if not user_data.get("authTokens"):
+            logger.warning(f"There is no tokens for user '{user.id}'")
+            continue
+        
 
-    # watch_response = gmail_service.watch(user.id, PUBSUB_TOPIC)
-    # logger.info(f"Refreshed Pub/Sub watch for user '{user.id}' || {watch_response}")
+        user_creds = gmail.refresh_user_credentials(user_data["authTokens"], ENV_VARS["OAUTH_SCOPES"])
+        
+        user_with_refreshed_token = db.update_user_oauth_token(user.id, json.loads(user_creds.to_json()))
+        user_gmail_service = gmail.build_user_gmail_service(user_creds)
 
-    # db.update_user_last_refresh(
-    #     user.id,
-    #     datetime.now(),
-    #     datetime.fromtimestamp(int(watch_response["expiration"])),
-    #     history_id=watch_response["historyId"],
-    # )
+        res = user_gmail_service.users().watch(userId="me", body={"topicName": PUBSUB_TOPIC}).execute()
+        
+        db.update_user_last_refresh(user_with_refreshed_token.id, datetime.now(), datetime.fromtimestamp(int(res["expiration"][:-3])), res["historyId"])
 
     return ("SUCCESS", 200)
