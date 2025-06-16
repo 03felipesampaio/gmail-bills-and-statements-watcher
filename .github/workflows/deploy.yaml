@@ -10,7 +10,7 @@ env:
   REGION: ${{ secrets.PROJECT_REGION }}
   RUNTIME: python312
   FUNCTION_NAME: gmail-bills-and-statements-message-watcher
-  CLOUD_FUNCTIONS_SERVICE_ACCOUNT: gmail-token-refresher@${{ secrets.PROJECT_ID }}iam.gserviceaccount.com
+  CLOUD_FUNCTIONS_SERVICE_ACCOUNT: gmail-token-refresher@${{ secrets.PROJECT_ID }}.iam.gserviceaccount.com
   CLOUD_SCHEDULER_SERVICE_ACCOUNT: cloud-scheduler-invoker@${{ secrets.PROJECT_ID }}.iam.gserviceaccount.com # Added service account email
 
 jobs:
