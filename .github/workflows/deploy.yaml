@@ -56,7 +56,8 @@ jobs:
             --no-allow-unauthenticated \
             --source=src/cloud_functions/gmail_bills_and_statements_message_watcher \
             --entry-point=refresh_watch \
-            --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }}
+            --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }} \
+            --set-secrets=env.yaml=${{ secrets.ENV_FILE_SECRET_ID }}
 
       - name: "Get Cloud Function URL"
         id: get-function-url
