@@ -1,5 +1,6 @@
 env*
 _*.sh
+_gmail_api.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
