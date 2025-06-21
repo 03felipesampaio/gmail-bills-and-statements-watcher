@@ -37,7 +37,7 @@ class AttachmentHandlerUploadGCPCloudStorage:
     def __init__(
         self, filter: Callable[[dict], bool], bucket: storage.Bucket, path: str
     ):
-        if path.endswith('/'):
+        if path.endswith("/"):
             path = path[:-1]
         self.filter = filter
         self.bucket = bucket
@@ -60,14 +60,18 @@ class AttachmentHandlerUploadGCPCloudStorage:
         msg_id = message["id"]
         original_filename = Path(attachment["filename"]).name
         filename = f"{self.path}/{msg_date}__{msg_id}__{original_filename}"
-        
-        logger.info(f"Starting upload to GCP Cloud Storage for file '{filename}'. Message ID: '{msg_id}'. Attachment name: '{attachment["filename"]}'")
-        
+
+        logger.info(
+            f"Starting upload to GCP Cloud Storage for file '{filename}'. Message ID: '{msg_id}'. Attachment name: '{attachment['filename']}'"
+        )
+
         blob = self.bucket.blob(filename)
         decoded_data = base64.urlsafe_b64decode(attachment["data"])
         blob.upload_from_string(decoded_data, content_type=attachment["mimeType"])
-        
-        logger.info(f"Uploaded file to GCP Cloud Storage '{filename}'. Message ID: '{msg_id}'. Attachment name: '{attachment["filename"]}'")
+
+        logger.info(
+            f"Uploaded file to GCP Cloud Storage '{filename}'. Message ID: '{msg_id}'. Attachment name: '{attachment['filename']}'"
+        )
         return blob.public_url
 
 
@@ -106,6 +110,20 @@ def get_user_from_firestore(user_email: str):
     return user
 
 
+def update_user_last_history_id(client: firestore.Client, user_email: str, history_id: str):
+    user = client.document(f"users/{user_email}")
+
+    current_history_id = user.get(["lastHistoryId"]).to_dict().get("lastHistoryId", '0')
+
+    if int(current_history_id) > int(history_id):
+        logger.warning(
+            f"Tried to update lastHistoryId for user '{user_email}' with a historyId smaller than the current. Current historyId: '{current_history_id}'. Received historyId: {history_id}. Operation was not concluded."
+        )
+        return
+
+    user.set({"lastHistoryId": history_id}, merge=True)
+
+
 def get_new_messsages_ids_and_max_history_id(
     service, start_history_id: str, end_history_id: str
 ) -> tuple[str, list[str]]:
@@ -124,7 +142,7 @@ def get_new_messsages_ids_and_max_history_id(
     max_history_id = "0"
     messages_ids = []
 
-    while "nextPageToken" in res and max_history_id < end_history_id:
+    while "nextPageToken" in res and int(max_history_id) < int(end_history_id):
         req = (
             service.users()
             .history()
@@ -139,12 +157,12 @@ def get_new_messsages_ids_and_max_history_id(
 
         for hist in res.get("history", []):
             # It wont add messages with historyId bigger than our current received message by the cloud function
-            if hist["id"] > end_history_id:
+            if int(hist["id"]) > int(end_history_id):
                 if "nextPageToken" in res:
                     del res["nextPageToken"]
                 break
 
-            max_history_id = max(max_history_id, hist["id"])
+            max_history_id = str(max(int(max_history_id), int(hist["id"])))
 
             for message in hist.get("messagesAdded", []):
                 messages_ids.append(message["message"]["id"])
@@ -191,12 +209,12 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
 
     if not user_last_history_id:
         logger.warning(f"First time quering messages for user '{email_address}'")
-        start_history_id = str(int(topic_message["historyId"]) - 500)
+        start_history_id = str(topic_message["historyId"])
     else:
         logger.info(
-            f"Handling messages for user '{email_address}' from historyId starting at '{user_last_history_id}' and going to or beyond '{topic_message['historyId']}'"
+            f"Handling messages for user '{email_address}' from historyId starting at '{user_last_history_id}' and going to '{topic_message['historyId']}'"
         )
-        start_history_id = user_last_history_id
+        start_history_id = str(int(user_last_history_id) + 1)
 
     max_history_id, new_messages_ids = get_new_messsages_ids_and_max_history_id(
         service, start_history_id, str(topic_message["historyId"])
@@ -232,4 +250,9 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
 
             for attachment in attachments:
                 handler.run(message_content, attachment)
-            
+
+    try:
+        update_user_last_history_id(firestore_client, email_address, max_history_id)
+    except Exception as e:
+        logger.error(e)
+        raise e
