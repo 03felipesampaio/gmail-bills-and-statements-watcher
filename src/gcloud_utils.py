@@ -2,7 +2,16 @@ from google.cloud import secretmanager
 from google.cloud import storage
 import base64
 import json
+import yaml
 
+def get_secret_yaml(secret_name: str) -> dict:
+    """
+    Reads a secret value from Google Secret Manager, assuming it's a YAML file,
+    and returns its content as a dictionary.
+    """
+    client = secretmanager.SecretManagerServiceClient()
+    response = client.access_secret_version(request={"name": secret_name})
+    return yaml.safe_load(response.payload.data.decode("UTF-8"))
 
 def get_client_credentials_from_secret_manager(secret_name: str) -> dict:
     """
