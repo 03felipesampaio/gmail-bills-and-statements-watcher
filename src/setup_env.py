@@ -1,6 +1,5 @@
 # setup.py
 from pathlib import Path
-import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from loguru import logger
 
@@ -24,30 +23,14 @@ class AppSettings(BaseSettings):
     OAUTH_SCOPES: list[str]
 
 
-def load_and_validate_environment(env_path: Path) -> AppSettings:
+def load_and_validate_environment(env_data: dict) -> AppSettings:
     """
     Reads the YAML file, loads it into the AppSettings class, and validates it.
     """
-    if not env_path.exists():
-        logger.error(f"Error: Environment file not found at {env_path}")
-        raise FileNotFoundError(f"Environment file not found: {env_path}")
-
     try:
-        with open(env_path, 'r', encoding='utf8') as f:
-            env_data = yaml.safe_load(f)
-            if not isinstance(env_data, dict):
-                raise ValueError("YAML file content must be a dictionary.")
-            logger.info(f"Environment file '{env_path}' loaded successfully.")
-
-            # Create an AppSettings instance from the loaded dictionary.
-            # BaseSettings will automatically try to load from the environment if a field isn't in the dict,
-            # but here we're explicitly passing it.
-            settings = AppSettings(**env_data)
-            logger.info("Environment variables validated successfully with Pydantic.")
-            return settings
-    except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML file '{env_path}': {e}")
-        raise
+        settings = AppSettings(**env_data)
+        logger.info("Environment variables validated successfully with Pydantic.")
+        return settings
     except ValueError as e:
         logger.error(f"Pydantic validation error for the environment: {e}")
         raise
