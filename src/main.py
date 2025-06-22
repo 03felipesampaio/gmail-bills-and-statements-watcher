@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from loguru import logger
 from datetime import datetime
+import yaml
 
 import functions_framework
 from cloudevents.http.event import CloudEvent
@@ -15,9 +16,12 @@ from . import firestore_service
 from . import gmail_service
 from . import message_handler
 
-settings = setup_env.load_and_validate_environment(
-    Path(os.getenv("YAML_CONFIG_PATH", "./env.yaml"))
-)
+if Path("env.yaml").exists():
+    env_data = yaml.safe_load(Path("env.yaml").read_text("utf8"))
+else:
+    env_data = gcloud_utils.get_secret_yaml(os.getenv("CONFIG_YAML_SECRET_NAME"))
+
+settings = setup_env.load_and_validate_environment(env_data)
 
 db = firestore_service.FirestoreService(
     firestore.Client(database=settings.FIRESTORE_DATABASE_ID)
@@ -173,17 +177,17 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
     logger.info(
         f"Found {len(new_messages_ids)} new messages for user '{email_address}'."
     )
-    
+
     for message_id in new_messages_ids:
         message_content = gmail.fetch_message_by_id(message_id, "full")
         message_subject = gmail.get_message_subject(message_content)
-        
+
         if message_subject not in SUBJECTS:
             logger.info(
                 f"Subject '{message_subject}' is NOT on watched subject list. Skipping..."
             )
             continue
-        
+
         logger.info(
             f"Message '{message_id}' has a desired subject '{message_subject}'. Getting it attachments"
         )
@@ -196,10 +200,13 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
 
             for attachment in attachments:
                 handler.run(message_content, attachment)
-    
+
     try:
         db.update_user_last_history_id(email_address, max_history_id)
     except Exception as e:
         return e, 500
 
-    return f"Successfully updated history to '{topic_message['historyId']}' for user '{email_address}'", 200
+    return (
+        f"Successfully updated history to '{topic_message['historyId']}' for user '{email_address}'",
+        200,
+    )
