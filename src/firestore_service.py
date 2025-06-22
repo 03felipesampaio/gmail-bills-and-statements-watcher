@@ -75,7 +75,7 @@ class FirestoreService:
             },
             merge=True,
         )
-        
+
         logger.debug(f"Updated watch information on database for user '{user_email}'.")
 
         if not user_data.get("currentWatch"):
@@ -89,7 +89,23 @@ class FirestoreService:
         historic_watch_ref = user_ref.collection("watchHistory").document(
             current_watch["timestamp"]
         )
-        
-        transaction.set(historic_watch_ref, current_watch)
-        logger.debug(f"Added old watch information on historical database for user '{user_email}'.")
 
+        transaction.set(historic_watch_ref, current_watch)
+        logger.debug(
+            f"Added old watch information on historical database for user '{user_email}'."
+        )
+
+    def update_user_last_history_id(self, user_email: str, history_id: str):
+        user = self.client.document(f"users/{user_email}")
+
+        current_history_id = (
+            user.get(["lastHistoryId"]).to_dict().get("lastHistoryId", "0")
+        )
+
+        if int(current_history_id) > int(history_id):
+            logger.warning(
+                f"Tried to update lastHistoryId for user '{user_email}' with a historyId smaller than the current. Current historyId: '{current_history_id}'. Received historyId: {history_id}. Operation was not concluded."
+            )
+            return
+
+        user.set({"lastHistoryId": history_id}, merge=True)
