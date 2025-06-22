@@ -1,6 +1,8 @@
 env*
 _*.sh
 _gmail_api.py
+Makefile
+requirements.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
