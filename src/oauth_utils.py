@@ -43,3 +43,17 @@ def get_user_email_from_credentials(creds: Credentials) -> str:
     logger.info(f"User email identified: {user_email}")
 
     return user_email
+
+
+def refresh_user_credentials(user_token: dict, scopes: list[str]) -> Credentials:
+    creds = Credentials.from_authorized_user_info(user_token, scopes)
+    
+    if not creds:
+        logger.error("Credentials are invalid or incomplete.")
+        raise ValueError("Credentials are invalid or incomplete.")
+    
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        logger.info("Refreshed expired credentials.")
+        
+    return creds
