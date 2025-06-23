@@ -9,75 +9,147 @@ env:
   PROJECT_ID: ${{ secrets.PROJECT_ID }}
   REGION: ${{ secrets.PROJECT_REGION }}
   RUNTIME: python312
-  FUNCTION_NAME: gmail-bills-and-statements-message-watcher
   CLOUD_FUNCTIONS_SERVICE_ACCOUNT: gmail-token-refresher@${{ secrets.PROJECT_ID }}.iam.gserviceaccount.com
-  CLOUD_SCHEDULER_SERVICE_ACCOUNT: cloud-scheduler-invoker@${{ secrets.PROJECT_ID }}.iam.gserviceaccount.com # Added service account email
+  CLOUD_SCHEDULER_SERVICE_ACCOUNT: cloud-scheduler-invoker@${{ secrets.PROJECT_ID }}.iam.gserviceaccount.com
+  CONFIG_YAML_SECRET_NAME: ${{ secrets.CONFIG_YAML_SECRET_NAME }}
+  # This will be the topic used on both watcher and handler
+  # WARNING!! This will only accept the name of the topic.
+  # From gcloud functions deploy: https://cloud.google.com/sdk/gcloud/reference/functions/deploy#--trigger-topic
+  # "Note that this flag does not accept the format of projects/PROJECT_ID/topics/TOPIC_ID. 
+  #  Use this flag to specify the final element TOPIC_ID. The PROJECT_ID will be read from the active configuration."
+  PUBSUB_TOPIC_NAME: ${{ secrets.PUBSUB_TOPIC_NAME }}
 
 jobs:
   deploy-watch-refresh:
     runs-on: "ubuntu-latest"
-
     permissions:
       contents: "read"
       id-token: "write"
-
     steps:
       - name: "Checkout"
-        uses: "actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332" # actions/checkout@v4
+        uses: "actions/checkout@v4"
+      - name: "Authenticate to Google Cloud"
+        id: "auth"
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}"
+      - name: "Set up Cloud SDK"
+        uses: "google-github-actions/setup-gcloud@v2"
+        with:
+          project_id: "${{ env.PROJECT_ID }}"
+      - name: "Install uv"
+        run: |
+          pip install uv
+      - name: "Generate requirements.txt from uv.lock"
+        run: |
+          uv sync -n
+          uv pip freeze > requirements.txt
+          cp requirements.txt src/requirements.txt
+      - name: "Deploy Watcher Cloud Function"
+        run: |-
+          gcloud functions deploy gmail-bills-and-statements-message-watcher \
+            --project=${{ env.PROJECT_ID }}  \
+            --region=${{ env.REGION }} \
+            --runtime=${{ env.RUNTIME }} \
+            --trigger-http  \
+            --no-allow-unauthenticated \
+            --source=src \
+            --entry-point=refresh_watch \
+            --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }} \
+            --set-env-vars=CONFIG_YAML_SECRET_NAME=${{ env.CONFIG_YAML_SECRET_NAME }}
+      - name: "Get Cloud Function URL"
+        id: get-function-url
+        run: |
+          URL=$(gcloud functions describe gmail-bills-and-statements-message-watcher \
+            --project=${{ env.PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --format='value(serviceConfig.uri)')
+          echo "function_url=$URL" >> $GITHUB_OUTPUT
+      - name: "Create Cloud Schedule job"
+        run: |
+          gcloud scheduler jobs update http call_gmail_watch_refresher \
+            --project=${{ env.PROJECT_ID }} \
+            --location=${{ env.REGION }} \
+            --schedule="0 3 */5 * *" \
+            --uri="${{ steps.get-function-url.outputs.function_url }}" \
+            --http-method=POST \
+            --message-body='{}' \
+            --time-zone="America/Sao_Paulo" \
+            --description="Gmail watcher needs to run every 7 days at max. This job runs each 5 days" \
+            --oidc-service-account-email="${{ env.CLOUD_SCHEDULER_SERVICE_ACCOUNT }}" \
+            --oidc-token-audience="${{ steps.get-function-url.outputs.function_url }}"
 
-      # - name: "Authenticate to Google Cloud"
-      #   id: "auth"
-      #   uses: "google-github-actions/auth@f112390a2df9932162083945e46d439060d66ec2" # google-github-actions/auth@v2
-      #   with:
-      #     credentials_json: "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}"
+  deploy-message-handler:
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "read"
+      id-token: "write"
+    steps:
+      - name: "Checkout"
+        uses: "actions/checkout@v4"
+      - name: "Authenticate to Google Cloud"
+        id: "auth"
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}"
+      - name: "Set up Cloud SDK"
+        uses: "google-github-actions/setup-gcloud@v2"
+        with:
+          project_id: "${{ env.PROJECT_ID }}"
+      - name: "Install uv"
+        run: |
+          pip install uv
+      - name: "Generate requirements.txt from uv.lock"
+        run: |
+          uv sync -n
+          uv pip freeze > requirements.txt
+          cp requirements.txt src/requirements.txt
+      - name: "Deploy Cloud Function"
+        run: |-
+          gcloud functions deploy gmail-bills-and-statements-message-handler \
+            --project=${{ env.PROJECT_ID }}  \
+            --region=${{ env.REGION }} \
+            --runtime=${{ env.RUNTIME }} \
+            --trigger-topic=${{ env.PUBSUB_TOPIC_NAME }} \
+            --source=src \
+            --entry-point=download_statements_and_bills_from_message_on_topic \
+            --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }} \
+            --set-env-vars=CONFIG_YAML_SECRET_NAME=${{ env.CONFIG_YAML_SECRET_NAME }}
 
-      # - name: "Set up Cloud SDK"
-      #   uses: "google-github-actions/setup-gcloud@v2"
-      #   with:
-      #     project_id: "${{ env.PROJECT_ID }}"
-
-      # - name: "Install uv"
-      #   run: |
-      #     pip install uv
-
-      # - name: "Generate requirements.txt from uv.lock"
-      #   run: |
-      #     uv sync -n
-      #     uv pip freeze > requirements.txt
-      #     cp requirements.txt src/cloud_functions/gmail_bills_and_statements_message_watcher/requirements.txt
-
-      # - name: "Deploy Cloud Function"
-      #   run: |-
-      #     gcloud functions deploy ${{ env.FUNCTION_NAME }} \
-      #       --project=${{ env.PROJECT_ID }}  \
-      #       --region=${{ env.REGION }} \
-      #       --runtime=${{ env.RUNTIME }} \
-      #       --trigger-http  \
-      #       --no-allow-unauthenticated \
-      #       --source=src/cloud_functions/gmail_bills_and_statements_message_watcher \
-      #       --entry-point=refresh_watch \
-      #       --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }} \
-      #       --set-secrets=env.yaml=${{ secrets.ENV_FILE_SECRET_ID }}
-
-      # - name: "Get Cloud Function URL"
-      #   id: get-function-url
-      #   run: |
-      #     URL=$(gcloud functions describe ${{ env.FUNCTION_NAME }} \
-      #       --project=${{ env.PROJECT_ID }} \
-      #       --region=${{ env.REGION }} \
-      #       --format='value(serviceConfig.uri)')
-      #     echo "function_url=$URL" >> $GITHUB_OUTPUT
-
-      # - name: "Create Cloud Schedule job" # Modified for authentication
-      #   run: |
-      #     gcloud scheduler jobs update http call_gmail_watch_refresher \
-      #       --project=${{ env.PROJECT_ID }} \
-      #       --location=${{ env.REGION }} \
-      #       --schedule="0 3 */5 * *" \
-      #       --uri="${{ steps.get-function-url.outputs.function_url }}" \
-      #       --http-method=POST \
-      #       --message-body='{}' \
-      #       --time-zone="America/Sao_Paulo" \
-      #       --description="Gmail watcher needs to run every 7 days at max. This job runs each 5 days" \
-      #       --oidc-service-account-email="${{ env.CLOUD_SCHEDULER_SERVICE_ACCOUNT }}" \
-      #       --oidc-token-audience="${{ steps.get-function-url.outputs.function_url }}"
+  deploy-oauth-callback:
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "read"
+      id-token: "write"
+    steps:
+      - name: "Checkout"
+        uses: "actions/checkout@v4"
+      - name: "Authenticate to Google Cloud"
+        id: "auth"
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}"
+      - name: "Set up Cloud SDK"
+        uses: "google-github-actions/setup-gcloud@v2"
+        with:
+          project_id: "${{ env.PROJECT_ID }}"
+      - name: "Install uv"
+        run: |
+          pip install uv
+      - name: "Generate requirements.txt from uv.lock"
+        run: |
+          uv sync -n
+          uv pip freeze > requirements.txt
+          cp requirements.txt src/requirements.txt
+      - name: "Deploy Cloud Function"
+        run: |-
+          gcloud functions deploy gmail-bills-and-statements-oauth-callback \
+            --project=${{ env.PROJECT_ID }}  \
+            --region=${{ env.REGION }} \
+            --runtime=${{ env.RUNTIME }} \
+            --trigger-http \
+            --no-allow-unauthenticated \
+            --source=src \
+            --entry-point=oauth_callback_function \
+            --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }} \
+            --set-env-vars=CONFIG_YAML_SECRET_NAME=${{ env.CONFIG_YAML_SECRET_NAME }}
