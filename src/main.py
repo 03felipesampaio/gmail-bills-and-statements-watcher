@@ -190,23 +190,20 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
                 logger.info(
                     f"Subject '{message_subject}' is NOT on watched subject list. Skipping..."
                 )
-                logger.info(f"Updating history_id_checkpoint from '{history_id_checkpoint}' to '{message_content["historyId"]}'")
-                history_id_checkpoint = int(message_content["historyId"])
-                continue
-            
-            logger.info(
-                f"Message '{message["id"]}' has a desired subject '{message_subject}'. Getting it attachments."
-            )
-            
-            attachment_handlers = SUBJECTS[message_subject]
-            
-            for handler in attachment_handlers:
-                attachments = gmail.download_attachments_with_condition(
-                    message_content, handler.filter
+            else:
+                logger.info(
+                    f"Message '{message["id"]}' has a desired subject '{message_subject}'. Getting it attachments."
                 )
+                
+                attachment_handlers = SUBJECTS[message_subject]
+                
+                for handler in attachment_handlers:
+                    attachments = gmail.download_attachments_with_condition(
+                        message_content, handler.filter
+                    )
 
-                for attachment in attachments:
-                    handler.run(message_content, attachment)
+                    for attachment in attachments:
+                        handler.run(message_content, attachment)
                     
             logger.info(f"Updating history_id_checkpoint from '{history_id_checkpoint}' to '{message_content["historyId"]}'")
             history_id_checkpoint = int(message_content["historyId"])
