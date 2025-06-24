@@ -5,10 +5,11 @@ from collections.abc import Callable
 
 
 class GmailService:
-    def __init__(self, service):
+    def __init__(self, service, user_email):
         self.service = service
+        self.user_email = user_email
 
-    def fetch_message_by_id(self, message_id: str, format: str):
+    def fetch_message_by_id(self, message_id: str, format: str) -> dict:
         """
         Retrieve a Gmail message by its ID.
 
@@ -20,7 +21,7 @@ class GmailService:
             dict: The message resource as returned by the Gmail API.
         """
 
-        logger.info(f"Fetching message with id '{message_id}'")
+        logger.info(f"Fetching message with id '{message_id}' for user '{self.user_email}'")
         return (
             self.service.users()
             .messages()
@@ -51,30 +52,29 @@ class GmailService:
 
         return res
 
-    def get_new_messsages_ids_and_max_history_id(
-        self, start_history_id: str, end_history_id: str
-    ) -> tuple[str, list[str]]:
-        """Get all new messages IDs from Gmail API since last execution until the new one, received by Cloud Functions.
+    def fetch_new_messages_from_history_id_range(
+        self, start_history_id: int, end_history_id: int
+    ) -> list[dict]:
+        """
+        Retrieves all new message IDs from the Gmail API between two history IDs.
 
         Args:
-            start_history_id (str): Start historyId, queried from database.
-            end_history_id (str): End historyId, usually is the historyId from topic.
+            start_history_id (int): The starting historyId, typically queried from the database.
+            end_history_id (int): The ending historyId, usually from the notification topic.
 
         Returns:
-            tuple[str, list[str]]: Max historyID and the list of all messages IDs.
+            list[dict]: A list of dictionaries, each containing 'historyId' and 'id' of a new message.
         """
-        # Placeholder just to start while loop
         res = {"nextPageToken": None}
-        max_history_id = "0"
-        messages_ids = []
+        messages_info = []
 
-        while "nextPageToken" in res and int(max_history_id) < int(end_history_id):
+        while "nextPageToken" in res:
             req = (
                 self.service.users()
                 .history()
                 .list(
                     userId="me",
-                    startHistoryId=start_history_id,
+                    startHistoryId=str(start_history_id),
                     pageToken=res["nextPageToken"],
                     historyTypes=["messageAdded"],
                 )
@@ -82,18 +82,15 @@ class GmailService:
             res = req.execute()
 
             for hist in res.get("history", []):
-                # It wont add messages with historyId bigger than our current received message by the cloud function
-                if int(hist["id"]) > int(end_history_id):
+                if int(hist["id"]) > end_history_id:
                     if "nextPageToken" in res:
                         del res["nextPageToken"]
                     break
 
-                max_history_id = str(max(int(max_history_id), int(hist["id"])))
-
                 for message in hist.get("messagesAdded", []):
-                    messages_ids.append(message["message"]["id"])
+                    messages_info.append(message["message"])
 
-        return max_history_id, messages_ids
+        return messages_info
     
     def download_attachments_with_condition(self, message: dict, filter: Callable[[dict], bool]):
         """
@@ -107,6 +104,7 @@ class GmailService:
         Returns:
             list: List of attachment contents (dicts as returned by attachments().get()).
         """
+        logger.info(f"Fetching attachments for message '{message["id"]}'")
         attachments_content = []
         payload = message.get("payload", {})
         parts = payload.get("parts", [])
@@ -119,7 +117,7 @@ class GmailService:
                 body = part.get("body", {})
                 attachment_id = body.get("attachmentId")
                 if attachment_id and filter(part):
-                    logger.info(f"Attachment '{part.get('filename')}' is being downloaded.")
+                    logger.info(f"Attachment '{part.get('filename')}' is being downloaded. Message '{message['id']}' User '{self.user_email}'")
                     attachment_data = (
                         self.service.users()
                         .messages()
@@ -127,6 +125,7 @@ class GmailService:
                         .get(userId="me", messageId=message["id"], id=attachment_id)
                         .execute()
                     )
+                    logger.info(f"Attachment '{part.get('filename')}' was downloaded. Message '{message['id']}' User '{self.user_email}'")
                     # Add filename and mimetype to the attachment data
                     attachment_data["filename"] = part.get("filename")
                     attachment_data["mimeType"] = part.get("mimeType")
