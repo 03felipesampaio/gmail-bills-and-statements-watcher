@@ -137,76 +137,89 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
     data = cloud_event.data
 
     topic_message = gcloud_utils.decode_topic_message(data)
-    email_address = topic_message["emailAddress"]
-    logger.info(f"Received message for user: '{email_address}'")
+    logger.info(f"Received message: {topic_message}")
+    
+    event_email = topic_message["emailAddress"]
+    event_history_id = topic_message["historyId"]
 
-    user = db.get_user_data(email_address)
+    user = db.get_user_data(event_email)
 
     if not user:
-        return f"There is no record of user '{email_address}'", 404
+        return f"There is no record of user '{event_email}'", 404
 
     try:
-        logger.info(f"Building Gmail service for user '{email_address}'")
+        logger.info(f"Building Gmail service for user '{event_email}'")
         creds = oauth_utils.refresh_user_credentials(
             user["authTokens"], settings.OAUTH_SCOPES
         )
-        db.set_user_auth_tokens(email_address, creds)
+        db.set_user_auth_tokens(event_email, creds)
         gmail = gmail_service.GmailService(
-            gmail_service.build_user_gmail_service(creds)
+            gmail_service.build_user_gmail_service(creds),
+            event_email
         )
-        logger.info(f"Built Gmail service for user '{email_address}'")
+        logger.info(f"Built Gmail service for user '{event_email}'")
     except Exception as e:
-        logger.error(f"Failed to build service for user '{email_address}: {e}")
+        logger.error(f"Failed to build service for user '{event_email}: {e}")
         return e, 500
 
     user_last_history_id = user.get("lastHistoryId")
 
-    if not user_last_history_id:
-        logger.warning(f"First time quering messages for user '{email_address}'")
-        start_history_id = str(topic_message["historyId"])
+    if user_last_history_id:
+        start_history_id = int(user_last_history_id) + 1
+        logger.info(
+            f"Processing messages for user '{event_email}' from history ID '{user_last_history_id}' to '{event_history_id}'."
+        )
     else:
-        logger.info(
-            f"Handling messages for user '{email_address}' from historyId starting at '{user_last_history_id}' and going to '{topic_message['historyId']}'"
-        )
-        start_history_id = str(int(user_last_history_id) + 1)
+        logger.warning(f"First time quering messages for user '{event_email}'")
+        start_history_id = topic_message["historyId"]
 
-    max_history_id, new_messages_ids = gmail.get_new_messsages_ids_and_max_history_id(
-        start_history_id, str(topic_message["historyId"])
+    new_messages = gmail.fetch_new_messages_from_history_id_range(
+        start_history_id, topic_message["historyId"]
     )
 
-    logger.info(
-        f"Found {len(new_messages_ids)} new messages for user '{email_address}'."
-    )
+    logger.info(f"Found {len(new_messages)} new messages for user '{event_email}'.")
 
-    for message_id in new_messages_ids:
-        message_content = gmail.fetch_message_by_id(message_id, "full")
-        message_subject = gmail.get_message_subject(message_content)
-
-        if message_subject not in SUBJECTS:
-            logger.info(
-                f"Subject '{message_subject}' is NOT on watched subject list. Skipping..."
-            )
-            continue
-
-        logger.info(
-            f"Message '{message_id}' has a desired subject '{message_subject}'. Getting it attachments"
-        )
-        attachment_handlers = SUBJECTS[message_subject]
-
-        for handler in attachment_handlers:
-            attachments = gmail.download_attachments_with_condition(
-                message_content, handler.filter
-            )
-
-            for attachment in attachments:
-                handler.run(message_content, attachment)
+    history_id_checkpoint = user_last_history_id
 
     try:
-        db.update_user_last_history_id(email_address, max_history_id)
-    except Exception as e:
-        return e, 500
+        for message in new_messages:
+            message_content = gmail.fetch_message_by_id(message["id"], "full")
+            message_subject = gmail.get_message_subject(message_content)
+            
+            if message_subject not in SUBJECTS:
+                logger.info(
+                    f"Subject '{message_subject}' is NOT on watched subject list. Skipping..."
+                )
+                logger.info(f"Updating history_id_checkpoint from '{history_id_checkpoint}' to '{message_content["historyId"]}'")
+                history_id_checkpoint = int(message_content["historyId"])
+                continue
+            
+            logger.info(
+                f"Message '{message["id"]}' has a desired subject '{message_subject}'. Getting it attachments."
+            )
+            
+            attachment_handlers = SUBJECTS[message_subject]
+            
+            for handler in attachment_handlers:
+                attachments = gmail.download_attachments_with_condition(
+                    message_content, handler.filter
+                )
 
+                for attachment in attachments:
+                    handler.run(message_content, attachment)
+                    
+            logger.info(f"Updating history_id_checkpoint from '{history_id_checkpoint}' to '{message_content["historyId"]}'")
+            history_id_checkpoint = int(message_content["historyId"])
+        
+    except Exception as e:
+        logger.error(f"Failed to handle messages for user '{event_email}'. Error: {e}")
+        raise e
+    finally:
+        if history_id_checkpoint != user_last_history_id:
+            db.update_user_last_history_id(event_email, history_id_checkpoint)
+    
+    
     return (
-        f"Successfully updated history to '{topic_message['historyId']}' for user '{email_address}'",
+        f"Successfully updated history to '{topic_message['historyId']}' for user '{event_email}'",
         200,
     )
