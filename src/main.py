@@ -156,10 +156,10 @@ def refresh_watch(request):
             )
             users_failed += 1
 
-    if users_failed:
-        return users_failed, 500
+    response = {"usersRefreshed": users_refreshed, "usersFailedRefresh": users_failed}
+    logger.info("Finished refresh", **response)
 
-    return {"usersRefreshed": len(users_refreshed)}, 200
+    return response, 200 if users_failed == 0 else 500
 
 
 @functions_framework.cloud_event
