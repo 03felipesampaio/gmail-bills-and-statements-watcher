@@ -56,7 +56,7 @@ jobs:
             --source=src \
             --entry-point=refresh_watch \
             --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }} \
-            --set-env-vars=CONFIG_YAML_SECRET_NAME=${{ env.CONFIG_YAML_SECRET_NAME }}
+            --set-env-vars=CONFIG_YAML_SECRET_NAME=${{ env.CONFIG_YAML_SECRET_NAME }},ENVIRON=PROD
       - name: "Get Cloud Function URL"
         id: get-function-url
         run: |
@@ -114,7 +114,7 @@ jobs:
             --source=src \
             --entry-point=download_statements_and_bills_from_message_on_topic \
             --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }} \
-            --set-env-vars=CONFIG_YAML_SECRET_NAME=${{ env.CONFIG_YAML_SECRET_NAME }}
+            --set-env-vars=CONFIG_YAML_SECRET_NAME=${{ env.CONFIG_YAML_SECRET_NAME }},ENVIRON=PROD
 
   deploy-oauth-callback:
     runs-on: "ubuntu-latest"
@@ -152,4 +152,4 @@ jobs:
             --source=src \
             --entry-point=oauth_callback_function \
             --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }} \
-            --set-env-vars=CONFIG_YAML_SECRET_NAME=${{ env.CONFIG_YAML_SECRET_NAME }}
+            --set-env-vars=CONFIG_YAML_SECRET_NAME=${{ env.CONFIG_YAML_SECRET_NAME }},ENVIRON=PROD
