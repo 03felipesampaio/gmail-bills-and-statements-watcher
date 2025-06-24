@@ -95,11 +95,13 @@ class FirestoreService:
             f"Added old watch information on historical database for user '{user_email}'."
         )
 
-    def update_user_last_history_id(self, user_email: str, history_id: str):
+    def update_user_last_history_id(
+        self, user_email: str, history_id: int
+    ):
         user = self.client.document(f"users/{user_email}")
 
         current_history_id = (
-            user.get(["lastHistoryId"]).to_dict().get("lastHistoryId", "0")
+            user.get(["lastHistoryId"]).to_dict().get("lastHistoryId", 0)
         )
 
         if int(current_history_id) > int(history_id):
@@ -108,4 +110,6 @@ class FirestoreService:
             )
             return
 
+        # transaction.set(user, {"lastHistoryId": history_id}, merge=True)
         user.set({"lastHistoryId": history_id}, merge=True)
+        logger.info(f"Set user '{user_email}' lastHistoryId to '{history_id}'")
