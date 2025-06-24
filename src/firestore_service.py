@@ -96,12 +96,12 @@ class FirestoreService:
         )
 
     def update_user_last_history_id(
-        self, transaction: firestore.Transaction, user_email: str, history_id: int
+        self, user_email: str, history_id: int
     ):
         user = self.client.document(f"users/{user_email}")
 
         current_history_id = (
-            user.get(["lastHistoryId"], transaction).to_dict().get("lastHistoryId", 0)
+            user.get(["lastHistoryId"]).to_dict().get("lastHistoryId", 0)
         )
 
         if int(current_history_id) > int(history_id):
@@ -110,5 +110,6 @@ class FirestoreService:
             )
             return
 
-        transaction.set(user, {"lastHistoryId": history_id}, merge=True)
+        # transaction.set(user, {"lastHistoryId": history_id}, merge=True)
+        user.set({"lastHistoryId": history_id}, merge=True)
         logger.info(f"Set user '{user_email}' lastHistoryId to '{history_id}'")
