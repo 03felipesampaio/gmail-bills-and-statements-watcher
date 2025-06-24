@@ -212,9 +212,9 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
         logger.error(f"Failed to handle messages for user '{event_email}'. Error: {e}")
         raise e
     finally:
+        # TODO add correct transaction here. The current one is failing on get methods
         if history_id_checkpoint != user_last_history_id:
-            with db.transaction() as transaction:
-                db.update_user_last_history_id(transaction, event_email, history_id_checkpoint)
+            db.update_user_last_history_id(event_email, history_id_checkpoint)
     
     
     return (
