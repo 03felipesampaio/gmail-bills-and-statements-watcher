@@ -216,7 +216,8 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
         raise e
     finally:
         if history_id_checkpoint != user_last_history_id:
-            db.update_user_last_history_id(event_email, history_id_checkpoint)
+            with db.transaction() as transaction:
+                db.update_user_last_history_id(transaction, event_email, history_id_checkpoint)
     
     
     return (
