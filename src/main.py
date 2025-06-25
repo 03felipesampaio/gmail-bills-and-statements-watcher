@@ -106,8 +106,7 @@ def refresh_watch(request):
     users_failed = 0
 
     for user_ref in db.get_all_users_iterator():
-        user_logger = logger.bind(user_id=user_ref.id)
-        user_logger.info("Refreshing watch")
+        logger.info("Refreshing watch for user '{user_id}'", user_id=user_ref.id)
         try:
             user_data = db.get_user_data(user_ref.id)
 
@@ -117,8 +116,9 @@ def refresh_watch(request):
                 )
 
             if not user_data.get("authTokens"):
-                user_logger.warning(
-                    "Found no tokens. Skipping...",
+                logger.warning(
+                    "Found no auth tokens for user '{user_id}'. Skipping...",
+                    user_id=user_ref.id,
                 )
                 continue
 
@@ -146,13 +146,15 @@ def refresh_watch(request):
                 )
 
             users_refreshed += 1
-            user_logger.info(
-                "Refreshed watch",
+            logger.info(
+                "Refreshed watch for user '{user_id}'",
+                user_id=user_ref.id,
                 watch=watch_res,
             )
         except Exception:
-            user_logger.exception(
-                "Failed to refresh watch",
+            logger.exception(
+                "Failed to refresh watch for user '{user_id}'",
+                user_id=user_ref.id,
             )
             users_failed += 1
 
@@ -174,62 +176,99 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
     # Extract the data from the CloudEvent
     data = cloud_event.data
 
+    logger.info("Received event from pubsub", event_data=data)
     topic_message = gcloud_utils.decode_topic_message(data)
-    logger.info(f"Received message: {topic_message}")
 
-    event_email = topic_message["emailAddress"]
+    user_email = topic_message["emailAddress"]
     event_history_id = topic_message["historyId"]
+    logger.info(
+        "Identified event email: {user_email}",
+        user_email=user_email,
+        topic_message=topic_message,
+    )
 
-    user = db.get_user_data(event_email)
+    user = db.get_user_data(user_email)
 
     if not user:
-        return f"There is no record of user '{event_email}'", 404
+        logger.warning("No user found for email {user_email}", user_email=user_email)
+        return f"There is no record of user '{user_email}'", 404
 
     try:
-        logger.info(f"Building Gmail service for user '{event_email}'")
+        logger.debug(
+            "Building Gmail service for user {user_email}", user_email=user_email
+        )
         creds = oauth_utils.refresh_user_credentials(
             user["authTokens"], settings.OAUTH_SCOPES
         )
-        db.set_user_auth_tokens(event_email, creds)
+        db.set_user_auth_tokens(user_email, creds)
         gmail = gmail_service.GmailService(
-            gmail_service.build_user_gmail_service(creds), event_email
+            gmail_service.build_user_gmail_service(creds), user_email
         )
-        logger.info(f"Built Gmail service for user '{event_email}'")
+        logger.debug("Built Gmail service for user {user_email}", user_email=user_email)
     except Exception as e:
-        logger.error(f"Failed to build service for user '{event_email}: {e}")
+        logger.exception(
+            "Failed to build service for user {user_email}", user_email=user_email
+        )
         return e, 500
 
     user_last_history_id = user.get("lastHistoryId")
 
     if user_last_history_id:
         start_history_id = int(user_last_history_id) + 1
-        logger.info(
-            f"Processing messages for user '{event_email}' from history ID '{user_last_history_id}' to '{event_history_id}'."
-        )
     else:
-        logger.warning(f"First time quering messages for user '{event_email}'")
+        logger.warning(
+            "First time querying messages for user {user_email}", user_email=user_email
+        )
         start_history_id = topic_message["historyId"]
+
+    logger.info(
+        "Starting to handle messages for user {user_email} from historyId {start} to {end}",
+        user_email=user_email,
+        start=start_history_id,
+        end=event_history_id,
+        user_last_history_id=user_last_history_id,
+    )
 
     new_messages = gmail.fetch_new_messages_from_history_id_range(
         start_history_id, topic_message["historyId"]
     )
 
-    logger.info(f"Found {len(new_messages)} new messages for user '{event_email}'.")
+    logger.info(
+        "Found {count} new messages for user {user_email}",
+        count=len(new_messages),
+        user_email=user_email,
+    )
 
     history_id_checkpoint = user_last_history_id
+    last_message = None
+    current_history_id = history_id_checkpoint
 
     try:
         for message in new_messages:
+            last_message = message
             message_content = gmail.fetch_message_by_id(message["id"], "full")
             message_subject = gmail.get_message_subject(message_content)
+            current_history_id = int(message_content["historyId"])
+
+            logger.info(
+                "Handling events from historyId {historyId} for user {user_email}",
+                message_id=message["id"],
+                subject=message_subject,
+                user_email=user_email,
+            )
 
             if message_subject not in SUBJECTS:
-                logger.info(
-                    f"Subject '{message_subject}' is NOT on watched subject list. Skipping..."
+                logger.debug(
+                    "Subject '{subject}' is NOT on watched subject list. Skipping... (user {user_email})",
+                    subject=message_subject,
+                    user_email=user_email,
                 )
             else:
                 logger.info(
-                    f"Message '{message['id']}' has a desired subject '{message_subject}'. Getting it attachments."
+                    "Message '{message_id}' has a desired subject '{subject}'. Getting its attachments. (user {user_email})",
+                    message_id=message["id"],
+                    subject=message_subject,
+                    user_email=user_email,
                 )
 
                 attachment_handlers = SUBJECTS[message_subject]
@@ -243,19 +282,33 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
                         handler.run(message_content, attachment)
 
             logger.info(
-                f"Updating history_id_checkpoint from '{history_id_checkpoint}' to '{message_content['historyId']}'"
+                "Handled events from historyId  '{to_history_id}' (user {user_email})",
+                from_history_id=history_id_checkpoint,
+                to_history_id=message_content["historyId"],
+                user_email=user_email,
             )
-            history_id_checkpoint = int(message_content["historyId"])
+            history_id_checkpoint = current_history_id
 
     except Exception as e:
-        logger.error(f"Failed to handle messages for user '{event_email}'. Error: {e}")
+        logger.exception(
+            "Failed to sync events for user {user_email}. Failed at historyId {history_id} and messageId {message_id}.",
+            user_email=user_email,
+            history_id=current_history_id,
+            message_id=last_message["id"],
+        )
         raise e
     finally:
         # TODO add correct transaction here. The current one is failing on get methods
         if history_id_checkpoint != user_last_history_id:
-            db.update_user_last_history_id(event_email, history_id_checkpoint)
+            db.update_user_last_history_id(user_email, history_id_checkpoint)
+        logger.info(
+            "Finished syncing events from historyId '{from_history_id}' to '{to_history_id}' (user {user_email})",
+            from_history_id=user_last_history_id,
+            to_history_id=history_id_checkpoint,
+            user_email=user_email,
+        )
 
     return (
-        f"Successfully updated history to '{topic_message['historyId']}' for user '{event_email}'",
+        f"Successfully updated history to '{topic_message['historyId']}' for user '{user_email}'",
         200,
     )
