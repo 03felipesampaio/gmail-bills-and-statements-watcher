@@ -73,14 +73,19 @@ def oauth_callback_function(request):
     auth_code = request_args.get("code")
 
     if not auth_code:
-        logger.error("Error: Authorization code not found in the request.")
-        return "Error: Authorization code not found. Please try again.", 400
-
-    gmail_client_id = gcloud_utils.get_client_credentials_from_secret_manager(
-        settings.APP_CLIENT_ID_SECRET
-    )
+        logger.error("Authorization code not found in the request.")
+        return "Authorization code not found. Please try again.", 400
 
     try:
+        gmail_client_id = gcloud_utils.get_client_credentials_from_secret_manager(
+            settings.APP_CLIENT_ID_SECRET
+        )
+    except Exception:
+        logger.exception("Failed to fetch secret from Secret Manager")
+        return "Error building credentials", 500
+
+    try:
+        logger.info("Starting OAuth flow")
         creds = oauth_utils.start_oauth_flow(
             gmail_client_id,
             auth_code,
@@ -89,12 +94,13 @@ def oauth_callback_function(request):
         )
 
         user_email = oauth_utils.get_user_email_from_credentials(creds)
-    except ValueError as e:
-        logger.error(e)
-        return str(e), 400
+        logger.info("Finished OAuth flow")
+    except Exception:
+        logger.exception("Failed OAuth flow")
+        return "Failed OAuth flow", 500
 
     db.set_user_auth_tokens(user_email, creds)
-    logger.info(f"OAuth tokens for {user_email} successfully saved to database.")
+    logger.info("OAuth tokens for {user_email} writen on database.", user_email=user_email)
 
     return "SUCCESSFULLY AUTHORIZED", 200
 
