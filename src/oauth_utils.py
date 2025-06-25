@@ -73,7 +73,7 @@ def refresh_user_credentials(user_token: dict, scopes: list[str]) -> Credentials
         raise ValueError("Credentials are invalid or incomplete.")
     
     logger.debug(
-        "Instancieted credentials",
+        "Instancieted Oauth credentials",
         valid=creds.valid,
         expired=creds.expired,
         has_refresh_token=bool(creds.refresh_token),
