@@ -15,6 +15,7 @@ from . import oauth_utils
 from . import firestore_service
 from . import gmail_service
 from . import message_handler
+from . import handler_service
 
 setup_logger.setup_logging(os.getenv("ENVIRON", "DEV"), os.getenv("LOG_LEVEL", "INFO"))
 
@@ -63,6 +64,22 @@ SUBJECTS = {
 }
 
 
+def build_gmail_service_from_user_tokens(
+    user_email: str, auth_tokens: dict
+) -> gmail_service.GmailService:
+    logger.debug("Building Gmail service for user {user_email}", user_email=user_email)
+    creds = oauth_utils.build_credentials_from_token(auth_tokens, settings.OAUTH_SCOPES)
+    if not creds.valid:
+        creds = oauth_utils.refresh_user_credentials(creds)
+        db.set_user_auth_tokens(user_email, creds)
+    gmail = gmail_service.GmailService(
+        gmail_service.build_user_gmail_service(creds), user_email
+    )
+    logger.debug("Built Gmail service for user {user_email}", user_email=user_email)
+
+    return gmail
+
+
 @functions_framework.http
 def oauth_callback_function(request):
     """Cloud function to handle OAuth flow to get app permissions
@@ -100,7 +117,9 @@ def oauth_callback_function(request):
         return "Failed OAuth flow", 500
 
     db.set_user_auth_tokens(user_email, creds)
-    logger.info("OAuth tokens for {user_email} writen on database.", user_email=user_email)
+    logger.info(
+        "OAuth tokens for {user_email} writen on database.", user_email=user_email
+    )
 
     return "SUCCESSFULLY AUTHORIZED", 200
 
@@ -175,13 +194,8 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
     """
     Cloud Function to handle Gmail messages for bills and statements.
     This function is triggered by a CloudEvent from Pub/Sub.
-
-    Args:
-        cloud_event (CloudEvent): The CloudEvent containing the Gmail message data.
     """
-    # Extract the data from the CloudEvent
     data = cloud_event.data
-
     logger.info("Received event from pubsub", event_data=data)
     topic_message = gcloud_utils.decode_topic_message(data)
 
@@ -200,121 +214,29 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
         return f"There is no record of user '{user_email}'", 404
 
     try:
-        logger.debug(
-            "Building Gmail service for user {user_email}", user_email=user_email
-        )
-        creds = oauth_utils.refresh_user_credentials(
-            user["authTokens"], settings.OAUTH_SCOPES
-        )
-        db.set_user_auth_tokens(user_email, creds)
-        gmail = gmail_service.GmailService(
-            gmail_service.build_user_gmail_service(creds), user_email
-        )
-        logger.debug("Built Gmail service for user {user_email}", user_email=user_email)
+        gmail = build_gmail_service_from_user_tokens(user_email, user["authTokens"])
     except Exception as e:
         logger.exception(
             "Failed to build service for user {user_email}", user_email=user_email
         )
-        return e, 500
+        raise e
 
-    user_last_history_id = user.get("lastHistoryId")
-
-    if user_last_history_id:
-        start_history_id = int(user_last_history_id) + 1
-    else:
-        logger.warning(
-            "First time querying messages for user {user_email}", user_email=user_email
-        )
-        start_history_id = topic_message["historyId"]
-
-    logger.info(
-        "Starting to handle messages for user {user_email} from historyId {start} to {end}",
-        user_email=user_email,
-        start=start_history_id,
-        end=event_history_id,
-        user_last_history_id=user_last_history_id,
-    )
-
-    new_messages = gmail.fetch_new_messages_from_history_id_range(
-        start_history_id, topic_message["historyId"]
-    )
-
-    logger.info(
-        "Found {count} new messages for user {user_email}",
-        count=len(new_messages),
-        user_email=user_email,
-    )
-
-    history_id_checkpoint = user_last_history_id
-    last_message = None
-    current_history_id = history_id_checkpoint
-
+    handler = handler_service.HandlerFunctionService(gmail, db)
+    
     try:
-        for message in new_messages:
-            last_message = message
-            message_content = gmail.fetch_message_by_id(message["id"], "full")
-            message_subject = gmail.get_message_subject(message_content)
-            current_history_id = int(message_content["historyId"])
-
-            logger.info(
-                "Handling events from historyId {historyId} for user {user_email}",
-                message_id=message["id"],
-                subject=message_subject,
-                user_email=user_email,
-            )
-
-            if message_subject not in SUBJECTS:
-                logger.debug(
-                    "Subject '{subject}' is NOT on watched subject list. Skipping... (user {user_email})",
-                    subject=message_subject,
-                    user_email=user_email,
-                )
-            else:
-                logger.info(
-                    "Message '{message_id}' has a desired subject '{subject}'. Getting its attachments. (user {user_email})",
-                    message_id=message["id"],
-                    subject=message_subject,
-                    user_email=user_email,
-                )
-
-                attachment_handlers = SUBJECTS[message_subject]
-
-                for handler in attachment_handlers:
-                    attachments = gmail.download_attachments_with_condition(
-                        message_content, handler.filter
-                    )
-
-                    for attachment in attachments:
-                        handler.run(message_content, attachment)
-
-            logger.info(
-                "Handled events from historyId  '{to_history_id}' (user {user_email})",
-                from_history_id=history_id_checkpoint,
-                to_history_id=message_content["historyId"],
-                user_email=user_email,
-            )
-            history_id_checkpoint = current_history_id
-
+        last_success_history_id = handler.sync_events_for_user(
+            user_email=user_email,
+            event_history_id=event_history_id,
+            subjects=SUBJECTS,
+        )
     except Exception as e:
         logger.exception(
-            "Failed to sync events for user {user_email}. Failed at historyId {history_id} and messageId {message_id}.",
+            "Failed to sync events for user {user_email}.",
             user_email=user_email,
-            history_id=current_history_id,
-            message_id=last_message["id"],
         )
         raise e
-    finally:
-        # TODO add correct transaction here. The current one is failing on get methods
-        if history_id_checkpoint != user_last_history_id:
-            db.update_user_last_history_id(user_email, history_id_checkpoint)
-        logger.info(
-            "Finished syncing events from historyId '{from_history_id}' to '{to_history_id}' (user {user_email})",
-            from_history_id=user_last_history_id,
-            to_history_id=history_id_checkpoint,
-            user_email=user_email,
-        )
-
+    
     return (
-        f"Successfully updated history to '{topic_message['historyId']}' for user '{user_email}'",
+        f"Successfully updated history to '{last_success_history_id}' for user '{user_email}'",
         200,
     )

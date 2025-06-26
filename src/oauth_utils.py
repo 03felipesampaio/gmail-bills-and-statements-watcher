@@ -45,33 +45,30 @@ def get_user_email_from_credentials(creds: Credentials) -> str:
     return user_email
 
 
-def refresh_user_credentials(user_token: dict, scopes: list[str]) -> Credentials:
-    """
-    Refreshes and validates user OAuth2 credentials.
+def build_credentials_from_token(user_token: dict, scopes: list[str]) -> Credentials:
+    return Credentials.from_authorized_user_info(user_token, scopes)
 
-    Attempts to create a Credentials object from the provided user token and scopes.
-    If the credentials are expired but contain a refresh token, it will attempt to
-    refresh them. Raises errors if the credentials are invalid, incomplete, or cannot
-    be refreshed.
+
+def refresh_user_credentials(creds: Credentials) -> Credentials:
+    """
+    Refresh and validate user OAuth2 credentials.
+
+    If the credentials are expired and have a refresh token, attempts to refresh them.
+    Raises ValueError if credentials are invalid or incomplete.
 
     Args:
-        user_token (dict): The user's OAuth2 token information, typically loaded from storage.
-        scopes (list[str]): The list of OAuth2 scopes required for the credentials.
-
-    Raises:
-        ValueError: If the credentials data cannot be parsed or is incomplete.
-        ValueError: If the credentials are invalid or missing required fields.
-        RefreshError: If refreshing the credentials fails.
+        creds (Credentials): The user's OAuth2 credentials.
 
     Returns:
-        Credentials: A valid, refreshed Credentials object ready for use with Google APIs.
+        Credentials: A valid, refreshed Credentials object.
+
+    Raises:
+        ValueError: If credentials are invalid or incomplete.
+        RefreshError: If refreshing the credentials fails.
     """
-
-    creds = Credentials.from_authorized_user_info(user_token, scopes)
-
     if not creds:
         raise ValueError("Credentials are invalid or incomplete.")
-    
+
     logger.debug(
         "Instancieted Oauth credentials",
         valid=creds.valid,

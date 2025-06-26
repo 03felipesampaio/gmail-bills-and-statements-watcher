@@ -21,7 +21,9 @@ class GmailService:
             dict: The message resource as returned by the Gmail API.
         """
 
-        logger.info(f"Fetching message with id '{message_id}' for user '{self.user_email}'")
+        logger.info(
+            f"Fetching message with id '{message_id}' for user '{self.user_email}'"
+        )
         return (
             self.service.users()
             .messages()
@@ -91,8 +93,69 @@ class GmailService:
                     messages_info.append(message["message"])
 
         return messages_info
-    
-    def download_attachments_with_condition(self, message: dict, filter: Callable[[dict], bool]):
+
+    def get_history_pages_generator(
+        self,
+        start_history_id: str,
+        history_types: list[str],
+        max_history_id_to_fetch: str,
+    ):
+        """
+        A generator that fetches pages from the Gmail history().list API.
+
+        With each iteration, it makes a new paginated request and yields the complete
+        raw JSON response dictionary from the API.
+
+        Args:
+            start_history_id (str): The starting historyId to list from.
+            history_types (list[str]): The types of history events to list (e.g., ['messageAdded']).
+            max_history_id_to_fetch (str): The maximum historyId to fetch, used as a stop condition.
+
+        Yields:
+            dict: The raw JSON response dictionary from the API for a single page.
+        """
+        res = {"nextPageToken": None}
+        start_history_id = str(start_history_id)  # Ensure it's a string
+        max_history_id_to_fetch = str(max_history_id_to_fetch)  # Ensure it's a string
+
+        # This loop condition is explicit, as requested.
+        # Exceptions from the API call will propagate to the caller.
+        while "nextPageToken" in res:
+            logger.debug(
+                f"Fetching history page with starting historyId '{start_history_id}' and pageToken: '{res.get('nextPageToken')}'"
+            )
+
+            req = (
+                self.service.users()
+                .history()
+                .list(
+                    userId="me",
+                    startHistoryId=start_history_id,
+                    pageToken=res.get("nextPageToken"),
+                    historyTypes=history_types,
+                )
+            )
+
+            res = req.execute()
+
+            yield res
+
+            # Check the historyId of the last event on the page to decide whether to stop
+            history_events = res.get("history", [])
+            if history_events:
+                last_history_id_on_page = int(history_events[-1].get("id", 0))
+                if last_history_id_on_page >= int(max_history_id_to_fetch):
+                    logger.debug(
+                        f"The last historyId on the page ({last_history_id_on_page}) reached or surpassed the limit ({max_history_id_to_fetch}). Stopping pagination."
+                    )
+                    res.pop("nextPageToken", None)
+
+        logger.debug("No next page token found. End of pagination.")
+        return  # Ends the generator explicitly.
+
+    def download_attachments_with_condition(
+        self, message: dict, filter: Callable[[dict], bool]
+    ):
         """
         Downloads attachments from a Gmail message that match a filter.
 
@@ -104,7 +167,7 @@ class GmailService:
         Returns:
             list: List of attachment contents (dicts as returned by attachments().get()).
         """
-        logger.info(f"Fetching attachments for message '{message["id"]}'")
+        logger.info(f"Fetching attachments for message '{message['id']}'")
         attachments_content = []
         payload = message.get("payload", {})
         parts = payload.get("parts", [])
@@ -113,11 +176,13 @@ class GmailService:
             for part in parts:
                 if not part.get("filename"):
                     continue
-                
+
                 body = part.get("body", {})
                 attachment_id = body.get("attachmentId")
                 if attachment_id and filter(part):
-                    logger.info(f"Attachment '{part.get('filename')}' is being downloaded. Message '{message['id']}' User '{self.user_email}'")
+                    logger.info(
+                        f"Attachment '{part.get('filename')}' is being downloaded. Message '{message['id']}' User '{self.user_email}'"
+                    )
                     attachment_data = (
                         self.service.users()
                         .messages()
@@ -125,12 +190,16 @@ class GmailService:
                         .get(userId="me", messageId=message["id"], id=attachment_id)
                         .execute()
                     )
-                    logger.info(f"Attachment '{part.get('filename')}' was downloaded. Message '{message['id']}' User '{self.user_email}'")
+                    logger.info(
+                        f"Attachment '{part.get('filename')}' was downloaded. Message '{message['id']}' User '{self.user_email}'"
+                    )
                     # Add filename and mimetype to the attachment data
                     attachment_data["filename"] = part.get("filename")
                     attachment_data["mimeType"] = part.get("mimeType")
                     attachments_content.append(attachment_data)
-                    logger.info(f"Successfully downloaded attachment '{part.get('filename')}'.")
+                    logger.info(
+                        f"Successfully downloaded attachment '{part.get('filename')}'."
+                    )
                 # Recursively search for attachments in subparts
                 if "parts" in part:
                     find_attachments(part["parts"])
