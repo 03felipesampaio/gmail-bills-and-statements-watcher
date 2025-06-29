@@ -13,6 +13,7 @@ dependencies = [
     "google-cloud-firestore>=2.20.2",
     "google-cloud-secret-manager>=2.24.0",
     "loguru>=0.7.3",
+    "mypy>=1.16.1",
     "pydantic-settings>=2.10.0",
     "pytest>=8.4.1",
     "python-dotenv>=1.1.0",
