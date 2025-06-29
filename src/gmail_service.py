@@ -2,6 +2,52 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from loguru import logger
 from collections.abc import Callable
+from typing import TypedDict, Generator, NotRequired
+
+class MessagePayload(TypedDict):
+    body: dict
+    filename: NotRequired[str]
+    headers: list[dict[str, str]]
+    mimeType: str
+    partId: str
+    parts: NotRequired[list["MessagePayload"]]
+    
+
+class MessageMinimal(TypedDict):
+    id: str
+    threadId: str
+
+class MessageFull(TypedDict):
+    id: str
+    threadId: str
+    labelIds: list[str]
+    snippet: str
+    historyId: str
+    internalDate: str
+    payload: MessagePayload
+    sizeEstimate: int
+    raw: str
+
+
+class HistoryRecordMessageList (TypedDict):
+    message: MessageMinimal
+
+class HistoryRecord(TypedDict):
+    id: str
+    messages: list[HistoryRecordMessageList]
+    messagesAdded: list[HistoryRecordMessageList]
+    messagesDeleted: list[HistoryRecordMessageList]
+    labelsAdded: list[HistoryRecordMessageList]
+    labelsRemoved: list[HistoryRecordMessageList]
+
+class HistoryList(TypedDict, total=True):
+    history: list[HistoryRecord]
+    nextPageToken: str
+    resultSizeEstimate: NotRequired[int]
+
+class WatchResponse(TypedDict):
+    historyId: str
+    expiration: str
 
 
 class GmailService:
@@ -9,7 +55,7 @@ class GmailService:
         self.service = service
         self.user_email = user_email
 
-    def fetch_message_by_id(self, message_id: str, format: str) -> dict:
+    def fetch_message_by_id(self, message_id: str, format: str = "full") -> MessageFull:
         """
         Retrieve a Gmail message by its ID.
 
@@ -47,7 +93,7 @@ class GmailService:
                 return header.get("value")
         return None
 
-    def watch(self, topic: str) -> dict:
+    def watch(self, topic: str) -> WatchResponse:
         res = (
             self.service.users().watch(userId="me", body={"topicName": topic}).execute()
         )
@@ -94,12 +140,11 @@ class GmailService:
 
         return messages_info
 
-    def get_history_pages_generator(
+    def list_histories(
         self,
         start_history_id: str,
         history_types: list[str],
-        max_history_id_to_fetch: str,
-    ):
+    ) -> Generator[HistoryList, None, None]:
         """
         A generator that fetches pages from the Gmail history().list API.
 
@@ -116,7 +161,6 @@ class GmailService:
         """
         res = {"nextPageToken": None}
         start_history_id = str(start_history_id)  # Ensure it's a string
-        max_history_id_to_fetch = str(max_history_id_to_fetch)  # Ensure it's a string
 
         # This loop condition is explicit, as requested.
         # Exceptions from the API call will propagate to the caller.
@@ -140,21 +184,11 @@ class GmailService:
 
             yield res
 
-            # Check the historyId of the last event on the page to decide whether to stop
-            history_events = res.get("history", [])
-            if history_events:
-                last_history_id_on_page = int(history_events[-1].get("id", 0))
-                if last_history_id_on_page >= int(max_history_id_to_fetch):
-                    logger.debug(
-                        f"The last historyId on the page ({last_history_id_on_page}) reached or surpassed the limit ({max_history_id_to_fetch}). Stopping pagination."
-                    )
-                    res.pop("nextPageToken", None)
-
         logger.debug("No next page token found. End of pagination.")
         return  # Ends the generator explicitly.
 
-    def download_attachments_with_condition(
-        self, message: dict, filter: Callable[[dict], bool]
+    def download_attachments(
+        self, message: dict, filter: Callable[[dict], bool] = None
     ):
         """
         Downloads attachments from a Gmail message that match a filter.
@@ -167,6 +201,9 @@ class GmailService:
         Returns:
             list: List of attachment contents (dicts as returned by attachments().get()).
         """
+        if filter is None:
+            filter = lambda x: True  # noqa: E731
+        
         logger.info(f"Fetching attachments for message '{message['id']}'")
         attachments_content = []
         payload = message.get("payload", {})
