@@ -148,7 +148,7 @@ jobs:
             --region=${{ env.REGION }} \
             --runtime=${{ env.RUNTIME }} \
             --trigger-http \
-            --no-allow-unauthenticated \
+            --allow-unauthenticated \
             --source=src \
             --entry-point=oauth_callback_function \
             --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }} \
