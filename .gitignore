@@ -3,6 +3,7 @@ _*.sh
 _gmail_api.py
 Makefile
 requirements.txt
+_messages
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
