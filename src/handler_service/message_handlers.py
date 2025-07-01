@@ -1,5 +1,8 @@
 from loguru import logger
+from pathlib import Path
 from gmail_service.models import MessageFull
+from .conditions import MessageConditions
+import models
 
 import json
 
@@ -12,7 +15,7 @@ class MessageAction:
         pass
 
 
-class MessageActionDownloadLocally:
+class MessageActionDownloadLocally(MessageAction):
     def __init__(self, path: str, name_fun=None):
         self.path = path
         self.name_fun = name_fun
@@ -21,9 +24,8 @@ class MessageActionDownloadLocally:
             self.name_fun = lambda x: f"{x['id']}.json"
 
     def run(self, message: MessageFull):
-        filename = self.path + "/" + self.name_fun(message)
-        with open(filename, "w") as fp:
-            fp.write(json.dumps(message))
+        file = Path(self.path) / self.name_fun(message)
+        file.write_text(json.dumps(message, indent=4, ensure_ascii=False))
 
 
 class AttachmentAction:
@@ -37,13 +39,15 @@ class AttachmentAction:
 
 
 class MessageHandler:
-    def __init__(self, name: str, conditions: dict, actions: list[MessageAction]):
+    def __init__(
+        self, name: str, conditions: MessageConditions, actions: list[MessageAction]
+    ):
         self.name = name
         self.conditions = conditions
         self.actions = actions
 
     def check_conditions(self, message: MessageFull) -> bool:
-        # Checks if message should go through actions
+        # return self.conditions.check_message(message)
         return True
 
     def handle(self, message: MessageFull):
@@ -59,6 +63,32 @@ class MessageHandler:
             name=self.name,
             message_id=message["id"],
         )
+
+
+def build_message_handler_from_dict(
+    handler_dict: models.MessageHandler,
+) -> MessageHandler:
+    """
+    Converte um dict do tipo models.MessageHandler em uma instância de MessageHandler.
+    Instancia dinamicamente as actions a partir do nome da classe.
+    """
+    name = handler_dict["name"]
+    logger.debug("Starting to instanciate handler {name}", name=name)
+    conditions = MessageConditions(handler_dict["filterCondition"])
+    actions = []
+    for action_dict in handler_dict.get("actions", []):
+        # Busca a classe dinamicamente no namespace atual
+        action_cls = globals().get(action_dict["className"])
+        if action_cls is not None:
+            actions.append(action_cls(**action_dict.get("args", {})))
+        else:
+            logger.error(
+                "Failed to find message action with name {class_name}",
+                class_name=action_dict["className"],
+            )
+
+    logger.debug("Finished to instanciate handler {name}", name=name)
+    return MessageHandler(name, conditions, actions)
 
 
 # Como que posso usar isso?

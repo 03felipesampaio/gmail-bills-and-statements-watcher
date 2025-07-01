@@ -2,11 +2,11 @@ import os
 from pathlib import Path
 from loguru import logger
 from datetime import datetime
-import yaml # type: ignore
+import yaml  # type: ignore
 
 import functions_framework
 from cloudevents.http.event import CloudEvent
-from google.cloud import firestore   # type: ignore
+from google.cloud import firestore  # type: ignore
 
 import setup_logger
 import setup_env
@@ -222,14 +222,10 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
         raise e
 
     handler = handler_service.HandlerFunctionService(
-        gmail,
-        [
-            handler_service.MessageHandler(
-                "save_messages",
-                {},
-                [],
-                # [handler_service.MessageActionDownloadLocally("_messages")],
-            )
+        gmail=gmail,
+        handlers=[
+            handler_service.build_message_handler_from_dict(h)
+            for h in db.get_user_message_handlers(user_email)
         ],
     )
 

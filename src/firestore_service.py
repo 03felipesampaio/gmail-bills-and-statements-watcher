@@ -115,3 +115,23 @@ class FirestoreService:
             new=history_id,
             old=current_history_id,
         )
+
+    def get_user_message_handlers(self, user_email: str) -> list[models.MessageHandler]:
+        return [
+            {
+                "name": "Inter_01",
+                "actions": [
+                    {
+                        "className": "MessageActionDownloadLocally",
+                        "args": {
+                            "path": "_messages"
+                        }
+                    }    
+                ],
+                "filterCondition": {
+                    "to": {
+                        "startswith": "Felipe"
+                    }
+                }
+            }
+        ]

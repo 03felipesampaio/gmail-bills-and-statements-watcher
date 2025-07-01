@@ -5,7 +5,9 @@ from . import message_handlers
 
 class HandlerFunctionService:
     def __init__(
-        self, gmail: gmail_service.GmailService, handlers: list[message_handlers.MessageHandler]
+        self,
+        gmail: gmail_service.GmailService,
+        handlers: list[message_handlers.MessageHandler],
     ):
         self.gmail = gmail
         self.user_email = gmail.user_email
@@ -20,9 +22,9 @@ class HandlerFunctionService:
             "Start handling events from historyId {min_history_id} to {max_history_id}. (user {user_email})",
             min_history_id=start_history_id,
             max_history_id=max_history_id,
-            user_email=self.user_email
+            user_email=self.user_email,
         )
-        
+
         last_success_history_id = start_history_id
 
         for page in self.gmail.list_histories(str(start_history_id), ["messageAdded"]):
@@ -54,7 +56,7 @@ class HandlerFunctionService:
                     end_history_id=max_history_id,
                 )
                 break
-            
+
             logger.debug(
                 "Starting to process events from historyId {history_id} (user {user_email})",
                 history_id=current_history_id,
@@ -62,9 +64,7 @@ class HandlerFunctionService:
             )
 
             try:
-                self._process_history_events(
-                    history_events
-                )
+                self._process_history_events(history_events)
                 last_success_history_id = current_history_id
             except Exception:
                 logger.exception(
@@ -73,7 +73,7 @@ class HandlerFunctionService:
                     history_id=current_history_id,
                 )
                 break
-            
+
             logger.debug(
                 "Finished processing events from historyId {history_id} (user {user_email})",
                 history_id=current_history_id,
@@ -108,26 +108,32 @@ class HandlerFunctionService:
             message_id=message_id,
             user_email=user_email,
         )
-        
+
         for handler in self.handlers:
             if not handler.check_conditions(message_content):
+                logger.debug(
+                    "Message {message_id} did not match conditions of handler {handler_name}. Skipping...",
+                    message_id=message_content["id"],
+                    handler_name=handler.name,
+                    user_email=user_email,
+                )
                 continue
-            
+
             logger.debug(
                 "Message {message_id} matches conditions of handler {handler_name}.",
                 message_id=message_content["id"],
                 handler_name=handler.name,
-                user_email=user_email
+                user_email=user_email,
             )
-            
+
             handler.handle(message_content)
-            
+
         logger.debug(
             "Finished to handle message {message_id}. (user {user_email})",
             message_id=message_id,
             user_email=user_email,
         )
-        
+
         # if message_subject not in subjects:
         #     logger.debug(
         #         "Skipping message {message_id}. Message subject is NOT on watched subject list. (user {user_email})",
@@ -136,14 +142,14 @@ class HandlerFunctionService:
         #         message_subject=message_subject
         #     )
         #     return
-        
+
         # logger.debug(
         #     "Message '{message_id}' has a desired subject '{message_subject}'. Getting its attachments. (user {user_email})",
         #     message_id=message_id,
         #     message_subject=message_subject,
         #     user_email=user_email,
         # )
-        
+
         # attachment_handlers = subjects[message_subject]
         # for handler in attachment_handlers:
         #     attachments = self.gmail.download_attachments(
