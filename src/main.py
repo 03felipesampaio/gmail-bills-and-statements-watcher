@@ -186,7 +186,7 @@ def refresh_watch(request):
     response = {"usersRefreshed": users_refreshed, "usersFailedRefresh": users_failed}
     logger.info("Finished refresh", **response)
 
-    return response, 200 if users_failed == 0 else 500
+    return response, (200 if users_failed == 0 else 500)
 
 
 @functions_framework.cloud_event
@@ -257,3 +257,10 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
         # Write the last successful historyId to database
         # db.update_user_last_history_id(user_email, last_success_history_id)
         pass
+
+    logger.info(
+        "Finished syncing events for user {user_email}. From historyId {start_history_id} to {end_history_id}",
+        user_email=user_email,
+        start_history_id=start_history_id,
+        end_history_id=last_success_history_id,
+    )
