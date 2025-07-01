@@ -1,53 +1,10 @@
 from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+from googleapiclient import discovery # type: ignore
 from loguru import logger
 from collections.abc import Callable
-from typing import TypedDict, Generator, NotRequired
+from typing import Generator
 
-class MessagePayload(TypedDict):
-    body: dict
-    filename: NotRequired[str]
-    headers: list[dict[str, str]]
-    mimeType: str
-    partId: str
-    parts: NotRequired[list["MessagePayload"]]
-    
-
-class MessageMinimal(TypedDict):
-    id: str
-    threadId: str
-
-class MessageFull(TypedDict):
-    id: str
-    threadId: str
-    labelIds: list[str]
-    snippet: str
-    historyId: str
-    internalDate: str
-    payload: MessagePayload
-    sizeEstimate: int
-    raw: str
-
-
-class HistoryRecordMessageList (TypedDict):
-    message: MessageMinimal
-
-class HistoryRecord(TypedDict):
-    id: str
-    messages: list[HistoryRecordMessageList]
-    messagesAdded: list[HistoryRecordMessageList]
-    messagesDeleted: list[HistoryRecordMessageList]
-    labelsAdded: list[HistoryRecordMessageList]
-    labelsRemoved: list[HistoryRecordMessageList]
-
-class HistoryList(TypedDict, total=True):
-    history: list[HistoryRecord]
-    nextPageToken: str
-    resultSizeEstimate: NotRequired[int]
-
-class WatchResponse(TypedDict):
-    historyId: str
-    expiration: str
+from . import models
 
 
 class GmailService:
@@ -55,7 +12,9 @@ class GmailService:
         self.service = service
         self.user_email = user_email
 
-    def fetch_message_by_id(self, message_id: str, format: str = "full") -> MessageFull:
+    def fetch_message_by_id(
+        self, message_id: str, format: str = "full"
+    ) -> models.MessageFull:
         """
         Retrieve a Gmail message by its ID.
 
@@ -77,7 +36,7 @@ class GmailService:
             .execute()
         )
 
-    def get_message_subject(self, message: dict) -> str | None:
+    def get_message_subject(self, message: models.MessageFull) -> str | None:
         """
         Extracts the subject from a Gmail message resource.
 
@@ -93,58 +52,18 @@ class GmailService:
                 return header.get("value")
         return None
 
-    def watch(self, topic: str) -> WatchResponse:
+    def watch(self, topic: str) -> models.WatchResponse:
         res = (
             self.service.users().watch(userId="me", body={"topicName": topic}).execute()
         )
 
         return res
 
-    def fetch_new_messages_from_history_id_range(
-        self, start_history_id: int, end_history_id: int
-    ) -> list[dict]:
-        """
-        Retrieves all new message IDs from the Gmail API between two history IDs.
-
-        Args:
-            start_history_id (int): The starting historyId, typically queried from the database.
-            end_history_id (int): The ending historyId, usually from the notification topic.
-
-        Returns:
-            list[dict]: A list of dictionaries, each containing 'historyId' and 'id' of a new message.
-        """
-        res = {"nextPageToken": None}
-        messages_info = []
-
-        while "nextPageToken" in res:
-            req = (
-                self.service.users()
-                .history()
-                .list(
-                    userId="me",
-                    startHistoryId=str(start_history_id),
-                    pageToken=res["nextPageToken"],
-                    historyTypes=["messageAdded"],
-                )
-            )
-            res = req.execute()
-
-            for hist in res.get("history", []):
-                if int(hist["id"]) > end_history_id:
-                    if "nextPageToken" in res:
-                        del res["nextPageToken"]
-                    break
-
-                for message in hist.get("messagesAdded", []):
-                    messages_info.append(message["message"])
-
-        return messages_info
-
     def list_histories(
         self,
         start_history_id: str,
         history_types: list[str],
-    ) -> Generator[HistoryList, None, None]:
+    ) -> Generator[models.HistoryList, None, None]:
         """
         A generator that fetches pages from the Gmail history().list API.
 
@@ -188,7 +107,7 @@ class GmailService:
         return  # Ends the generator explicitly.
 
     def download_attachments(
-        self, message: dict, filter: Callable[[dict], bool] = None
+        self, message: models.MessageFull, filter: Callable[[dict], bool] = None
     ):
         """
         Downloads attachments from a Gmail message that match a filter.
@@ -203,7 +122,7 @@ class GmailService:
         """
         if filter is None:
             filter = lambda x: True  # noqa: E731
-        
+
         logger.info(f"Fetching attachments for message '{message['id']}'")
         attachments_content = []
         payload = message.get("payload", {})
@@ -249,6 +168,6 @@ def build_user_gmail_service(creds: Credentials):
     if not creds or not creds.valid:
         raise ValueError("Received a not valid credentials for build service.")
 
-    service = build("gmail", "v1", credentials=creds)
+    service = discovery.build("gmail", "v1", credentials=creds)
 
     return service
