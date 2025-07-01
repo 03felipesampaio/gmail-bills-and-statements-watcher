@@ -1,107 +1,156 @@
 from loguru import logger
-import firestore_service
 import gmail_service
+from . import message_handlers
 
 
 class HandlerFunctionService:
     def __init__(
-        self, gmail: gmail_service.GmailService, db: firestore_service.FirestoreService
+        self, gmail: gmail_service.GmailService, handlers: list[message_handlers.MessageHandler]
     ):
         self.gmail = gmail
-        self.db = db
+        self.user_email = gmail.user_email
+        self.handlers = handlers
 
-    def sync_events_for_user(
+    def sync_events(
         self,
-        user_email: str,
-        event_history_id: int,
-        subjects: dict,
+        start_history_id: int,
+        max_history_id: int,
     ):
-        """
-        Processa todos os eventos do usuário, faz fail-fast, atualiza o banco e faz todo o logging.
-        Deixa a função cloud function enxuta.
-        """
-        user = self.db.get_user_data(user_email)
-        user_last_history_id = user.get("lastHistoryId")
-        if not user_last_history_id:
-            logger.warning("First time querying messages for user {user_email}", user_email=user_email)
-        # Calcula o start_history_id
-        start_history_id = int(event_history_id) if not user_last_history_id else int(user_last_history_id) + 1
-        last_success_history_id = user_last_history_id
-        for page in self.gmail.get_history_pages_generator(
-            start_history_id, ["messageAdded"], event_history_id
-        ):
-            for history_events in page.get("history", []):
-                current_history_id = int(history_events.get("id"))
-                if current_history_id > event_history_id:
-                    logger.info(
-                        "Encountered a historyId ({current_history_id}) greater than the target end_history_id ({end_history_id}). Stopping processing this page.",
-                        current_history_id=current_history_id,
-                        end_history_id=event_history_id,
-                    )
-                    break
-                try:
-                    self.process_history_events(history_events, user_email, current_history_id, subjects)
-                    last_success_history_id = current_history_id
-                except Exception as e:
-                    logger.error(
-                        "Erro ao processar historyId {current_history_id} para user {user_email}: {error}",
-                        current_history_id=current_history_id,
-                        user_email=user_email,
-                        error=str(e),
-                    )
-                    # Atualiza o banco antes de propagar a exceção
-                    if last_success_history_id != user_last_history_id:
-                        self.db.update_user_last_history_id(user_email, last_success_history_id)
-                    raise e
-        # Atualiza o banco ao final
-        if last_success_history_id != user_last_history_id:
-            self.db.update_user_last_history_id(user_email, last_success_history_id)
         logger.info(
-            "Finished syncing events from historyId '{from_history_id}' to '{to_history_id}' (user {user_email})",
-            from_history_id=user_last_history_id,
-            to_history_id=event_history_id,
-            user_email=user_email,
+            "Start handling events from historyId {min_history_id} to {max_history_id}. (user {user_email})",
+            min_history_id=start_history_id,
+            max_history_id=max_history_id,
+            user_email=self.user_email
         )
+        
+        last_success_history_id = start_history_id
+
+        for page in self.gmail.list_histories(start_history_id, ["messageAdded"]):
+            last_success_history_id = self._process_history_page(
+                page, max_history_id, last_success_history_id
+            )
+
+            if last_success_history_id == max_history_id:
+                break
+
         return last_success_history_id
 
-    def process_history_events(self, history_events: dict, user_email: str, current_history_id: int, subjects: dict):
-        for message_info in history_events.get("messagesAdded", []):
-            message = message_info.get("message", {})
-            if not message:
-                continue
-            self.handle_message_added(message, user_email, current_history_id, subjects)
+    def _process_history_page(
+        self,
+        history_page: gmail_service.models.HistoryList,
+        max_history_id: str,
+        last_success_history_id: int,
+    ) -> int:
+        user_email = self.user_email
 
-    def handle_message_added(self, message: dict, user_email: str, current_history_id: int, subjects: dict):
-        message_id = message["id"]
-        message_content = self.gmail.fetch_message_by_id(message_id, "full")
-        message_subject = self.gmail.get_message_subject(message_content)
-        logger.info(
-            "Handling message '{message_id}' from historyId '{current_history_id}' for user '{user_email}' with subject '{message_subject}'",
-            message_id=message_id,
-            current_history_id=current_history_id,
-            user_email=user_email,
-            message_subject=message_subject,
-        )
-        if message_subject not in subjects:
+        for history_events in history_page.get("history", []):
+            # We only want to process until the historyId from event
+            # This if stops the processing when we arrive to the final historyID
+            current_history_id = int(history_events["id"])
+            if current_history_id > max_history_id:
+                logger.info(
+                    "Encountered a historyId ({current_history_id}) greater than the target ({end_history_id}). Stopping processing this page.",
+                    current_history_id=current_history_id,
+                    end_history_id=max_history_id,
+                )
+                break
+            
             logger.debug(
-                "Subject '{subject}' is NOT on watched subject list. Skipping... (user {user_email})",
-                subject=message_subject,
+                "Starting to process events from historyId {history_id} (user {user_email})",
+                history_id=current_history_id,
                 user_email=user_email,
             )
-            return
-        logger.info(
-            "Message '{message_id}' has a desired subject '{message_subject}'. Getting its attachments. (user {user_email})",
+
+            try:
+                self._process_history_events(
+                    history_events
+                )
+                last_success_history_id = current_history_id
+            except Exception:
+                logger.exception(
+                    "Failed to process events from historyId {history_id} (user {user_email})",
+                    user_email=user_email,
+                    history_id=current_history_id,
+                )
+                break
+            
+            logger.debug(
+                "Finished processing events from historyId {history_id} (user {user_email})",
+                history_id=current_history_id,
+                user_email=user_email,
+            )
+
+        return last_success_history_id
+
+    def _process_history_events(
+        self, history_events: gmail_service.models.HistoryRecord
+    ):
+        for message_info in history_events.get("messagesAdded", []):
+            message = message_info["message"]
+            try:
+                self._handle_message_added(message)
+            except Exception as e:
+                logger.error(
+                    "Failed to process message {message_id} from historyId {history_id} (user {user_email})",
+                    message_id=message["id"],
+                    history_id=history_events["id"],
+                    user_email=self.user_email,
+                )
+                raise e
+
+    def _handle_message_added(self, message: gmail_service.models.MessageMinimal):
+        user_email = self.user_email
+        message_id = message["id"]
+        message_content = self.gmail.fetch_message_by_id(message_id, "full")
+        # message_subject = self.gmail.get_message_subject(message_content)
+        logger.debug(
+            "Starting to handle message {message_id}. (user {user_email})",
             message_id=message_id,
-            message_subject=message_subject,
             user_email=user_email,
         )
-        attachment_handlers = subjects[message_subject]
-        for handler in attachment_handlers:
-            attachments = self.gmail.download_attachments_with_condition(
-                message_content, handler.filter
+        
+        for handler in self.handlers:
+            if not handler.check_conditions(message_content):
+                continue
+            
+            logger.debug(
+                "Message {message_id} matches conditions of handler {handler_name}.",
+                message_id=message_content["id"],
+                handler_name=handler.name,
+                user_email=user_email
             )
-            for attachment in attachments:
-                handler.run(message_content, attachment)
+            
+            handler.handle(message_content)
+            
+        logger.debug(
+            "Finished to handle message {message_id}. (user {user_email})",
+            message_id=message_id,
+            user_email=user_email,
+        )
+        
+        # if message_subject not in subjects:
+        #     logger.debug(
+        #         "Skipping message {message_id}. Message subject is NOT on watched subject list. (user {user_email})",
+        #         user_email=user_email,
+        #         message_id=message_id,
+        #         message_subject=message_subject
+        #     )
+        #     return
+        
+        # logger.debug(
+        #     "Message '{message_id}' has a desired subject '{message_subject}'. Getting its attachments. (user {user_email})",
+        #     message_id=message_id,
+        #     message_subject=message_subject,
+        #     user_email=user_email,
+        # )
+        
+        # attachment_handlers = subjects[message_subject]
+        # for handler in attachment_handlers:
+        #     attachments = self.gmail.download_attachments(
+        #         message_content, handler.filter
+        #     )
+        #     for attachment in attachments:
+        #         handler.run(message_content, attachment)
 
 
 def parse_data_from_event(event_data) -> dict:
