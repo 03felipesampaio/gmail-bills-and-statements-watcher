@@ -2,20 +2,20 @@ import os
 from pathlib import Path
 from loguru import logger
 from datetime import datetime
-import yaml
+import yaml # type: ignore
 
 import functions_framework
 from cloudevents.http.event import CloudEvent
 from google.cloud import firestore
 
-from . import setup_logger
-from . import setup_env
-from . import gcloud_utils
-from . import oauth_utils
-from . import firestore_service
-from . import gmail_service
-from . import message_handler
-from . import handler_service
+import setup_logger
+import setup_env
+import gcloud_utils
+import oauth_utils
+import gmail_service
+import firestore_service
+import message_handler
+import handler_service
 
 setup_logger.setup_logging(os.getenv("ENVIRON", "DEV"), os.getenv("LOG_LEVEL", "INFO"))
 
@@ -221,22 +221,42 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
         )
         raise e
 
-    handler = handler_service.HandlerFunctionService(gmail, db)
-    
+    handler = handler_service.HandlerFunctionService(
+        gmail,
+        [
+            handler_service.MessageHandler(
+                "save_messages",
+                {},
+                [handler_service.MessageActionDownloadLocally("_messages")],
+            )
+        ],
+    )
+
+    # It starts from the last successful run historyId + 1
+    # If its the first run, it starts from the current event
+    last_success_history_id = int(user.get("lastHistoryId", event_history_id - 1))
+    start_history_id = last_success_history_id + 1
+
     try:
-        last_success_history_id = handler.sync_events_for_user(
-            user_email=user_email,
-            event_history_id=event_history_id,
-            subjects=SUBJECTS,
+        last_success_history_id = handler.sync_events(
+            start_history_id, event_history_id
         )
+
+        if last_success_history_id == -1:
+            raise Exception("Performed no synchronization.")
+        if last_success_history_id < event_history_id:
+            raise Exception("Performed partial synchronization.")
+
     except Exception as e:
         logger.exception(
-            "Failed to sync events for user {user_email}.",
+            "Failed to sync events for user {user_email}. HistoryId expected: '{expected}', got: '{curr}'",
             user_email=user_email,
+            expected=event_history_id,
+            curr=last_success_history_id,
         )
         raise e
-    
-    return (
-        f"Successfully updated history to '{last_success_history_id}' for user '{user_email}'",
-        200,
-    )
+
+    finally:
+        # Write the last successful historyId to database
+        # db.update_user_last_history_id(user_email, last_success_history_id)
+        pass
