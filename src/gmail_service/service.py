@@ -107,7 +107,7 @@ class GmailService:
         return  # Ends the generator explicitly.
 
     def download_attachments(
-        self, message: models.MessageFull, filter: Callable[[dict], bool] = None
+        self, message: models.MessageFull, filter: Callable[[dict], bool] | None = None
     ):
         """
         Downloads attachments from a Gmail message that match a filter.

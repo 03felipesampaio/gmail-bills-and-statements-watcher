@@ -1,4 +1,4 @@
-from google.cloud import storage
+from google.cloud import storage # type: ignore
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path

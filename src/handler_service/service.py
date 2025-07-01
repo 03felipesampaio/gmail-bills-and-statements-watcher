@@ -25,7 +25,7 @@ class HandlerFunctionService:
         
         last_success_history_id = start_history_id
 
-        for page in self.gmail.list_histories(start_history_id, ["messageAdded"]):
+        for page in self.gmail.list_histories(str(start_history_id), ["messageAdded"]):
             last_success_history_id = self._process_history_page(
                 page, max_history_id, last_success_history_id
             )
@@ -38,7 +38,7 @@ class HandlerFunctionService:
     def _process_history_page(
         self,
         history_page: gmail_service.models.HistoryList,
-        max_history_id: str,
+        max_history_id: int,
         last_success_history_id: int,
     ) -> int:
         user_email = self.user_email
@@ -151,10 +151,6 @@ class HandlerFunctionService:
         #     )
         #     for attachment in attachments:
         #         handler.run(message_content, attachment)
-
-
-def parse_data_from_event(event_data) -> dict:
-    pass
 
 
 # def find_start_history_id(user_last_history_id: int, event_history_id: int) -> int:

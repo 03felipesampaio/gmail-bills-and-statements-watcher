@@ -6,7 +6,7 @@ import yaml # type: ignore
 
 import functions_framework
 from cloudevents.http.event import CloudEvent
-from google.cloud import firestore
+from google.cloud import firestore   # type: ignore
 
 import setup_logger
 import setup_env
@@ -26,7 +26,7 @@ if Path("env.yaml").exists():
     env_data = yaml.safe_load(Path("env.yaml").read_text("utf8"))
 else:
     logger.info("Did not find env.yaml. Fetching file from Cloud Secrets.")
-    env_data = gcloud_utils.get_secret_yaml(os.getenv("CONFIG_YAML_SECRET_NAME"))
+    env_data = gcloud_utils.get_secret_yaml(os.environ["CONFIG_YAML_SECRET_NAME"])
 
 logger.info("Sending env variables for validation.")
 settings = setup_env.load_and_validate_environment(env_data)
@@ -227,7 +227,8 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
             handler_service.MessageHandler(
                 "save_messages",
                 {},
-                [handler_service.MessageActionDownloadLocally("_messages")],
+                [],
+                # [handler_service.MessageActionDownloadLocally("_messages")],
             )
         ],
     )
