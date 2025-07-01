@@ -1,4 +1,4 @@
-from google.cloud import firestore
+from google.cloud import firestore   # type: ignore
 
 import json
 from datetime import datetime
@@ -79,22 +79,17 @@ class FirestoreService:
 
         logger.debug(f"Updated watch information on database for user '{user_email}'.")
 
-        if not user_data.get("currentWatch"):
-            logger.info(
-                f"There was no currentWatch for user '{user_email}'. Skipping..."
-            )
-            return
-
         current_watch = user_data.get("currentWatch")
+        
+        if current_watch:
+            historic_watch_ref = user_ref.collection("watchHistory").document(
+                current_watch["timestamp"]
+            )
 
-        historic_watch_ref = user_ref.collection("watchHistory").document(
-            current_watch["timestamp"]
-        )
-
-        transaction.set(historic_watch_ref, current_watch)
-        logger.debug(
-            f"Added old watch information on historical database for user '{user_email}'."
-        )
+            transaction.set(historic_watch_ref, current_watch)
+            logger.debug(
+                f"Added old watch information on historical database for user '{user_email}'."
+            )
 
     def update_user_last_history_id(self, user_email: str, history_id: int):
         user = self.client.document(f"users/{user_email}")
