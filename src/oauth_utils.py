@@ -2,7 +2,7 @@ from loguru import logger
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import Flow
+from google_auth_oauthlib.flow import Flow  # type: ignore
 from google.oauth2 import id_token  # To verify ID Token and get email
 
 
