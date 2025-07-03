@@ -129,8 +129,8 @@ class FirestoreService:
                     }    
                 ],
                 "filterCondition": {
-                    "to": {
-                        "startswith": "Felipe"
+                    "subject": {
+                        "contains": "a"
                     }
                 }
             }

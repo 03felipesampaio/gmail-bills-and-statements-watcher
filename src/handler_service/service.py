@@ -110,7 +110,7 @@ class HandlerFunctionService:
         )
 
         for handler in self.handlers:
-            if not handler.check_conditions(message_content):
+            if not handler.conditions.check_message(message_content):
                 logger.debug(
                     "Message {message_id} did not match conditions of handler {handler_name}. Skipping...",
                     message_id=message_content["id"],

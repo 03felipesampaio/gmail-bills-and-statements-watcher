@@ -46,10 +46,6 @@ class MessageHandler:
         self.conditions = conditions
         self.actions = actions
 
-    def check_conditions(self, message: MessageFull) -> bool:
-        # return self.conditions.check_message(message)
-        return True
-
     def handle(self, message: MessageFull):
         logger.debug(
             "Starting handler {name} execution. Message {message_id}",
