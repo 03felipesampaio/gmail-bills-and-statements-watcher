@@ -224,7 +224,7 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
     handler = handler_service.HandlerFunctionService(
         gmail=gmail,
         handlers=[
-            handler_service.build_message_handler_from_dict(h)
+            handler_service.build_message_handler_from_dict(h, gmail=gmail)
             for h in db.get_user_message_handlers(user_email)
         ],
     )

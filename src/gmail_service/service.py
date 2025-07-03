@@ -1,5 +1,5 @@
 from google.oauth2.credentials import Credentials
-from googleapiclient import discovery # type: ignore
+from googleapiclient import discovery  # type: ignore
 from loguru import logger
 from collections.abc import Callable
 from typing import Generator
@@ -106,7 +106,33 @@ class GmailService:
         logger.debug("No next page token found. End of pagination.")
         return  # Ends the generator explicitly.
 
-    def download_attachments(
+    def download_attachment(
+        self, message_id: str, attachment_id: str, attachment_filename: str | None
+    ) -> models.AttachmentResponse:
+        logger.debug(
+            "Starting to download attachment '{filename}' from message '{message_id}' for user '{user_email}'",
+            filename=attachment_filename,
+            attachment_id=attachment_id,
+            message_id=message_id,
+            user_email=self.user_email,
+        )
+        attachment = (
+            self.service.users()
+            .messages()
+            .attachments()
+            .get(userId="me", messageId=message_id, id=attachment_id)
+            .execute()
+        )
+        logger.debug(
+            "Finished downloading attachment '{filename}' from message '{message_id}' for user '{user_email}'",
+            filename=attachment_filename,
+            attachment_id=attachment_id,
+            message_id=message_id,
+            user_email=self.user_email,
+        )
+        return attachment
+
+    def download_attachments_by_condition(
         self, message: models.MessageFull, filter: Callable[[dict], bool] | None = None
     ):
         """

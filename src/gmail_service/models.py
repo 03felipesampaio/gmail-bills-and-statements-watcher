@@ -6,7 +6,11 @@ class MessagePartBody(TypedDict, total=False):
 
     attachmentId: str
     size: int
-    data: str  # Base64 string for direct data
+    data: NotRequired[str]  # Base64 string for direct data
+    
+class AttachmentResponse(MessagePartBody):
+    """Content from attachments().get()"""
+    
 
 
 class MessagePartHeader(TypedDict):
