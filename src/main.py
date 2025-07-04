@@ -171,7 +171,7 @@ def refresh_watch(request):
 
 
 @functions_framework.cloud_event
-def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent):
+def handle_events(cloud_event: CloudEvent):
     """
     Cloud Function to handle Gmail messages for bills and statements.
     This function is triggered by a CloudEvent from Pub/Sub.
