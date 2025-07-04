@@ -116,22 +116,10 @@ class FirestoreService:
             old=current_history_id,
         )
 
-    def get_user_message_handlers(self, user_email: str) -> list[models.MessageHandler]:
-        return [
-            {
-                "name": "Inter_01",
-                "actions": [
-                    {
-                        "className": "MessageActionDownloadLocally",
-                        "args": {
-                            "path": "_messages"
-                        }
-                    }    
-                ],
-                "filterCondition": {
-                    "subject": {
-                        "contains": "a"
-                    }
-                }
-            }
-        ]
+    def get_user_message_handlers(self, user_email: str) -> Generator[models.MessageHandler, None, None]:
+        handlers_ref = self.get_user_reference(user_email).collection("messageHandlers")
+        
+        for handler_doc in handlers_ref.stream():
+            handler_data = handler_doc.to_dict()
+            handler_data["id"] = handler_doc.id
+            yield handler_data
