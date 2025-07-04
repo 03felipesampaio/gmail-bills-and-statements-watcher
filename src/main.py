@@ -17,6 +17,8 @@ import firestore_service
 import message_handler
 import handler_service
 
+import default_handlers
+
 setup_logger.setup_logging(os.getenv("ENVIRON", "DEV"), os.getenv("LOG_LEVEL", "INFO"))
 
 logger.info("Initializing function environment.")
@@ -221,12 +223,22 @@ def download_statements_and_bills_from_message_on_topic(cloud_event: CloudEvent)
         )
         raise e
 
+    message_handlers = [
+        handler_service.build_message_handler_from_dict(h, gmail=gmail)
+        for h in db.get_user_message_handlers(user_email)
+    ]
+    if not message_handlers:
+        logger.warning(
+            "No message handlers found for user {user_email}. Using default handlers.",
+            user_email=user_email,
+        )
+        message_handlers = default_handlers.get_default_handlers(
+            gmail, settings.ATTACHMENT_DESTINATION_BUCKET
+        )
+
     handler = handler_service.HandlerFunctionService(
         gmail=gmail,
-        handlers=[
-            handler_service.build_message_handler_from_dict(h, gmail=gmail)
-            for h in db.get_user_message_handlers(user_email)
-        ],
+        handlers=message_handlers,
     )
 
     # It starts from the last successful run historyId + 1
