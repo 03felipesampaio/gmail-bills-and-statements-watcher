@@ -246,7 +246,7 @@ def handle_events(cloud_event: CloudEvent):
 
     finally:
         # Write the last successful historyId to database
-        # db.update_user_last_history_id(user_email, last_success_history_id)
+        db.update_user_last_history_id(user_email, last_success_history_id)
         pass
 
     logger.info(
