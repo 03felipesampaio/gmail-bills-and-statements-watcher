@@ -1,10 +1,11 @@
-from google.cloud import firestore
+from google.cloud import firestore   # type: ignore
 
 import json
 from datetime import datetime
 from loguru import logger
 from google.oauth2.credentials import Credentials
-
+from typing import Generator
+import models
 
 class FirestoreService:
     def __init__(self, client: firestore.Client):
@@ -16,7 +17,7 @@ class FirestoreService:
     def get_user_reference(self, user_email):
         return self.client.document(f"users/{user_email}")
 
-    def get_user_data(self, user_email: str, transaction=None) -> dict | None:
+    def get_user_data(self, user_email: str, transaction=None) -> models.User|None:
         """Retrieves user document data."""
         doc_ref = self.get_user_reference(user_email)
         doc_snapshot = doc_ref.get(transaction=transaction)
@@ -35,7 +36,7 @@ class FirestoreService:
         doc_ref = self.client.collection("users").document(user_email)
         doc_ref.set({"authTokens": token}, merge=True)
 
-    def get_all_users_iterator(self):
+    def get_all_users_iterator(self) -> Generator[models.User, None, None]:
         """Get a firestore stream from users collections. Iterate to get all users.
 
         Returns:
@@ -78,26 +79,19 @@ class FirestoreService:
 
         logger.debug(f"Updated watch information on database for user '{user_email}'.")
 
-        if not user_data.get("currentWatch"):
-            logger.info(
-                f"There was no currentWatch for user '{user_email}'. Skipping..."
-            )
-            return
-
         current_watch = user_data.get("currentWatch")
+        
+        if current_watch:
+            historic_watch_ref = user_ref.collection("watchHistory").document(
+                current_watch["timestamp"]
+            )
 
-        historic_watch_ref = user_ref.collection("watchHistory").document(
-            current_watch["timestamp"]
-        )
+            transaction.set(historic_watch_ref, current_watch)
+            logger.debug(
+                f"Added old watch information on historical database for user '{user_email}'."
+            )
 
-        transaction.set(historic_watch_ref, current_watch)
-        logger.debug(
-            f"Added old watch information on historical database for user '{user_email}'."
-        )
-
-    def update_user_last_history_id(
-        self, user_email: str, history_id: int
-    ):
+    def update_user_last_history_id(self, user_email: str, history_id: int):
         user = self.client.document(f"users/{user_email}")
 
         current_history_id = (
@@ -106,10 +100,26 @@ class FirestoreService:
 
         if int(current_history_id) > int(history_id):
             logger.warning(
-                f"Tried to update lastHistoryId for user '{user_email}' with a historyId smaller than the current. Current historyId: '{current_history_id}'. Received historyId: {history_id}. Operation was not concluded."
+                "Tried to update lastHistoryId for user '{user_email}' with a historyId smaller than the current. Current historyId: '{current}'. Received historyId: {new}. Operation was not concluded.",
+                user_email=user_email,
+                current=current_history_id,
+                new=history_id
             )
             return
 
         # transaction.set(user, {"lastHistoryId": history_id}, merge=True)
         user.set({"lastHistoryId": history_id}, merge=True)
-        logger.info(f"Set user '{user_email}' lastHistoryId to '{history_id}'")
+        logger.info(
+            "Set user '{user_email}' lastHistoryId from {old} to '{new}'",
+            user_email=user_email,
+            new=history_id,
+            old=current_history_id,
+        )
+
+    def get_user_message_handlers(self, user_email: str) -> Generator[models.MessageHandler, None, None]:
+        handlers_ref = self.get_user_reference(user_email).collection("messageHandlers")
+        
+        for handler_doc in handlers_ref.stream():
+            handler_data = handler_doc.to_dict()
+            handler_data["id"] = handler_doc.id
+            yield handler_data

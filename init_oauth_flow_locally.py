@@ -1,9 +1,9 @@
 # local_auth_script.py (Seu script Python local para iniciar o fluxo)
 import json
-import yaml
+import yaml # type: ignore
 from pathlib import Path
 from google.cloud import secretmanager
-from google_auth_oauthlib.flow import Flow
+from google_auth_oauthlib.flow import Flow # type: ignore
 
 # --- Configuration (same as your project) ---
 ENV_VARS_YAML_PATH = Path("./env.yaml")
