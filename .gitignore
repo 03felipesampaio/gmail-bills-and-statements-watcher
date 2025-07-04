@@ -3,6 +3,8 @@ _*.sh
 _gmail_api.py
 Makefile
 requirements.txt
+_messages
+.vscode
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

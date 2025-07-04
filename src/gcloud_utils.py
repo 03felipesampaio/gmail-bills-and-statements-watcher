@@ -1,8 +1,8 @@
-from google.cloud import secretmanager
-from google.cloud import storage
+from google.cloud import secretmanager   # type: ignore
+from google.cloud import storage  # type: ignore
 import base64
 import json
-import yaml
+import yaml # type: ignore
 
 def get_secret_yaml(secret_name: str) -> dict:
     """
@@ -23,7 +23,7 @@ def get_client_credentials_from_secret_manager(secret_name: str) -> dict:
     return json.loads(response.payload.data.decode("UTF-8"))
 
 
-def decode_topic_message(topic_message_data: str) -> dict:
+def decode_topic_message(topic_message_data: dict) -> dict:
     message_content_json_str = base64.b64decode(
         topic_message_data["message"]["data"]
     ).decode("utf8")

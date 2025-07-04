@@ -112,7 +112,7 @@ jobs:
             --runtime=${{ env.RUNTIME }} \
             --trigger-topic=${{ env.PUBSUB_TOPIC_NAME }} \
             --source=src \
-            --entry-point=download_statements_and_bills_from_message_on_topic \
+            --entry-point=handle_events \
             --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }} \
             --set-env-vars=CONFIG_YAML_SECRET_NAME=${{ env.CONFIG_YAML_SECRET_NAME }},ENVIRON=PROD
 
@@ -148,7 +148,7 @@ jobs:
             --region=${{ env.REGION }} \
             --runtime=${{ env.RUNTIME }} \
             --trigger-http \
-            --no-allow-unauthenticated \
+            --allow-unauthenticated \
             --source=src \
             --entry-point=oauth_callback_function \
             --service-account=${{ env.CLOUD_FUNCTIONS_SERVICE_ACCOUNT }} \
