@@ -78,12 +78,6 @@ class AttachmentAction(MessageAction):
         parts = payload.get("parts", [])
         for part in walk_parts(parts):
             if not self._attachment_passes_filter(part):
-                logger.debug(
-                    "Attachment from partId {partId} does not pass filter for message {message_id}. (Action {action_name}).",
-                    message_id=message["id"],
-                    action_name=self.__class__.__name__,
-                    partId=part.get("partId", ""),
-                )
                 continue
             
             logger.debug(
