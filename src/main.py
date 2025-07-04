@@ -14,7 +14,6 @@ import gcloud_utils
 import oauth_utils
 import gmail_service
 import firestore_service
-import message_handler
 import handler_service
 
 import default_handlers
@@ -44,26 +43,6 @@ logger.info(
     "Successfully connected to firestore '{database}'",
     database=settings.FIRESTORE_DATABASE_ID,
 )
-
-bucket = gcloud_utils.get_bucket(settings.ATTACHMENT_DESTINATION_BUCKET)
-
-
-SUBJECTS = {
-    "Sua fatura fechou e o débito automático está ativado": [
-        message_handler.AttachmentHandlerUploadGCPCloudStorage(
-            lambda x: x.get("filename", "").endswith(".pdf"),
-            bucket,
-            "watcher/bills/nubank",
-        )
-    ],
-    "Fatura Cartão Inter": [
-        message_handler.AttachmentHandlerUploadGCPCloudStorage(
-            lambda x: x.get("filename", "").lower() == "fatura.pdf",
-            bucket,
-            "watcher/bills/inter",
-        )
-    ],
-}
 
 
 def build_gmail_service_from_user_tokens(
