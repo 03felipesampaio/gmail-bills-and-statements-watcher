@@ -86,7 +86,7 @@ class MessageAction(TypedDict):
 
 
 class MessageHandler(TypedDict):
-    """Handlers for messages"""
+    """Represents a message handler with a name, filter conditions, and actions to perform."""
 
     name: str
     filterCondition: FilterCondition
