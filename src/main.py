@@ -120,22 +120,14 @@ def refresh_watch(request):
                 raise ValueError(
                     f"User '{user_ref.id}' data was not found. Probably was deleted after the start of this function"
                 )
-
+                
             if not user_data.get("authTokens"):
-                logger.warning(
-                    "Found no auth tokens for user '{user_id}'. Skipping...",
-                    user_id=user_ref.id,
+                raise ValueError(
+                    f"User '{user_ref.id}' does not have authTokens. Cannot refresh watch."
                 )
-                continue
 
-            # Getting credentials and building Gmail Service for user
-
-            creds = oauth_utils.refresh_user_credentials(
-                user_data["authTokens"], settings.OAUTH_SCOPES
-            )
-            db.set_user_auth_tokens(user_ref.id, creds)
-            gmail = gmail_service.GmailService(
-                gmail_service.build_user_gmail_service(creds), user_ref.id
+            gmail = build_gmail_service_from_user_tokens(
+                user_ref.id, user_data["authTokens"]
             )
 
             # Calling watch() for user
