@@ -26,7 +26,7 @@ class GmailService:
             dict: The message resource as returned by the Gmail API.
         """
 
-        logger.info(
+        logger.debug(
             f"Fetching message with id '{message_id}' for user '{self.user_email}'"
         )
         return (
