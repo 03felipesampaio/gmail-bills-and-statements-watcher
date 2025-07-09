@@ -18,7 +18,7 @@ import handler_service
 
 import default_handlers
 
-setup_logger.setup_logging(os.getenv("ENVIRON", "DEV"), os.getenv("LOG_LEVEL", "INFO"))
+setup_logger.setup_logging(os.getenv("ENVIRON", "DEV"), os.getenv("LOG_LEVEL", "DEBUG"))
 
 # logger.info("Initializing function environment.")
 # logger.info("Looking up for environment YAML.")
