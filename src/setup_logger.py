@@ -1,20 +1,29 @@
 from loguru import logger
+import google.cloud.logging as cloud_logging  # type: ignore
+from google.cloud.logging_v2.handlers import CloudLoggingHandler
 import sys
 
 
 def setup_logging(
     env_type: str, log_level: str
-):  # Se você estiver usando um módulo separado para isso
-    logger.remove()  # Remove o handler padrão para ter controle total
+):
+    logger.remove()
 
-    if env_type == "PROD":  # Exemplo: só habilita em desenvolvimento
-        logger.add(
-            sys.stdout,
-            serialize=True,
-            level=log_level,
-            format="{message}",
-            catch=True
-        )
+    if env_type == "PROD":
+        gcp_logger_name = "gcp_log_processor"
+
+        client = cloud_logging.Client()
+        handler = CloudLoggingHandler(client, name=gcp_logger_name)
+        handler.setLevel(level=log_level)
+        logger.add(handler)
+        
+        # logger.add(
+        #     sys.stdout,
+        #     serialize=True,
+        #     level=log_level,
+        #     format="{message}",
+        #     catch=True
+        # )
     else:
         logger.add(
             sys.stdout,

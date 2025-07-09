@@ -20,29 +20,29 @@ import default_handlers
 
 setup_logger.setup_logging(os.getenv("ENVIRON", "DEV"), os.getenv("LOG_LEVEL", "INFO"))
 
-logger.info("Initializing function environment.")
-logger.info("Looking up for environment YAML.")
+# logger.info("Initializing function environment.")
+# logger.info("Looking up for environment YAML.")
 if Path("env.yaml").exists():
-    logger.info("Found env.yaml file locally. Loading it.")
+    # logger.info("Found env.yaml file locally. Loading it.")
     env_data = yaml.safe_load(Path("env.yaml").read_text("utf8"))
 else:
-    logger.info("Did not find env.yaml. Fetching file from Cloud Secrets.")
+    # logger.info("Did not find env.yaml. Fetching file from Cloud Secrets.")
     env_data = gcloud_utils.get_secret_yaml(os.environ["CONFIG_YAML_SECRET_NAME"])
 
-logger.info("Sending env variables for validation.")
+# logger.info("Sending env variables for validation.")
 settings = setup_env.load_and_validate_environment(env_data)
 
-logger.info(
-    "Connecting to firestore database '{database}'",
-    database=settings.FIRESTORE_DATABASE_ID,
-)
+# logger.info(
+#     "Connecting to firestore database '{database}'",
+#     database=settings.FIRESTORE_DATABASE_ID,
+# )
 db = firestore_service.FirestoreService(
     firestore.Client(database=settings.FIRESTORE_DATABASE_ID)
 )
-logger.info(
-    "Successfully connected to firestore '{database}'",
-    database=settings.FIRESTORE_DATABASE_ID,
-)
+# logger.info(
+#     "Successfully connected to firestore '{database}'",
+#     database=settings.FIRESTORE_DATABASE_ID,
+# )
 
 
 def build_gmail_service_from_user_tokens(
@@ -120,22 +120,14 @@ def refresh_watch(request):
                 raise ValueError(
                     f"User '{user_ref.id}' data was not found. Probably was deleted after the start of this function"
                 )
-
+                
             if not user_data.get("authTokens"):
-                logger.warning(
-                    "Found no auth tokens for user '{user_id}'. Skipping...",
-                    user_id=user_ref.id,
+                raise ValueError(
+                    f"User '{user_ref.id}' does not have authTokens. Cannot refresh watch."
                 )
-                continue
 
-            # Getting credentials and building Gmail Service for user
-
-            creds = oauth_utils.refresh_user_credentials(
-                user_data["authTokens"], settings.OAUTH_SCOPES
-            )
-            db.set_user_auth_tokens(user_ref.id, creds)
-            gmail = gmail_service.GmailService(
-                gmail_service.build_user_gmail_service(creds), user_ref.id
+            gmail = build_gmail_service_from_user_tokens(
+                user_ref.id, user_data["authTokens"]
             )
 
             # Calling watch() for user
