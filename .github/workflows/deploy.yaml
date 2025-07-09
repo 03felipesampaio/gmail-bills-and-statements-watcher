@@ -70,12 +70,12 @@ jobs:
           gcloud scheduler jobs update http call_gmail_watch_refresher \
             --project=${{ env.PROJECT_ID }} \
             --location=${{ env.REGION }} \
-            --schedule="0 3 */5 * *" \
+            --schedule="0 3 * * *" \
             --uri="${{ steps.get-function-url.outputs.function_url }}" \
             --http-method=POST \
             --message-body='{}' \
             --time-zone="America/Sao_Paulo" \
-            --description="Gmail watcher needs to run every 7 days at max. This job runs each 5 days" \
+            --description="Gmail watcher needs to run every 7 days at max. This job runs every day" \
             --oidc-service-account-email="${{ env.CLOUD_SCHEDULER_SERVICE_ACCOUNT }}" \
             --oidc-token-audience="${{ steps.get-function-url.outputs.function_url }}"
 
