@@ -20,29 +20,29 @@ import default_handlers
 
 setup_logger.setup_logging(os.getenv("ENVIRON", "DEV"), os.getenv("LOG_LEVEL", "INFO"))
 
-logger.info("Initializing function environment.")
-logger.info("Looking up for environment YAML.")
+# logger.info("Initializing function environment.")
+# logger.info("Looking up for environment YAML.")
 if Path("env.yaml").exists():
-    logger.info("Found env.yaml file locally. Loading it.")
+    # logger.info("Found env.yaml file locally. Loading it.")
     env_data = yaml.safe_load(Path("env.yaml").read_text("utf8"))
 else:
-    logger.info("Did not find env.yaml. Fetching file from Cloud Secrets.")
+    # logger.info("Did not find env.yaml. Fetching file from Cloud Secrets.")
     env_data = gcloud_utils.get_secret_yaml(os.environ["CONFIG_YAML_SECRET_NAME"])
 
-logger.info("Sending env variables for validation.")
+# logger.info("Sending env variables for validation.")
 settings = setup_env.load_and_validate_environment(env_data)
 
-logger.info(
-    "Connecting to firestore database '{database}'",
-    database=settings.FIRESTORE_DATABASE_ID,
-)
+# logger.info(
+#     "Connecting to firestore database '{database}'",
+#     database=settings.FIRESTORE_DATABASE_ID,
+# )
 db = firestore_service.FirestoreService(
     firestore.Client(database=settings.FIRESTORE_DATABASE_ID)
 )
-logger.info(
-    "Successfully connected to firestore '{database}'",
-    database=settings.FIRESTORE_DATABASE_ID,
-)
+# logger.info(
+#     "Successfully connected to firestore '{database}'",
+#     database=settings.FIRESTORE_DATABASE_ID,
+# )
 
 
 def build_gmail_service_from_user_tokens(
