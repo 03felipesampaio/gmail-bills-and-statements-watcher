@@ -1,5 +1,6 @@
 from loguru import logger
 import gmail_service
+from firestore_service import FirestoreService
 from . import message_handlers
 
 
@@ -8,15 +9,18 @@ class HandlerFunctionService:
         self,
         gmail: gmail_service.GmailService,
         handlers: list[message_handlers.MessageHandler],
+        db: FirestoreService,
     ):
         self.gmail = gmail
         self.user_email = gmail.user_email
         self.handlers = handlers
+        self.db = db
 
     def sync_events(
         self,
         start_history_id: int,
         max_history_id: int,
+        
     ):
         logger.info(
             "Start handling events from historyId {min_history_id} to {max_history_id}. (user {user_email})",
@@ -65,14 +69,18 @@ class HandlerFunctionService:
 
             try:
                 self._process_history_events(history_events)
+                self.db.update_user_last_history_id(
+                    user_email, current_history_id
+                )
                 last_success_history_id = current_history_id
-            except Exception:
+            except Exception as e:
                 logger.exception(
-                    "Failed to process events from historyId {history_id} (user {user_email})",
+                    "Failed to process events from historyId {history_id} (user {user_email}). Exception {exception}",
                     user_email=user_email,
                     history_id=current_history_id,
+                    exception=str(e),
                 )
-                break
+                raise e
 
             logger.info(
                 "Finished processing events from historyId {history_id} (user {user_email})",
@@ -91,10 +99,11 @@ class HandlerFunctionService:
                 self._handle_message_added(message)
             except Exception as e:
                 logger.exception(
-                    "Failed to process message {message_id} from historyId {history_id} (user {user_email})",
+                    "Failed to process message {message_id} from historyId {history_id} (user {user_email}). Exception: {exception}",
                     message_id=message["id"],
                     history_id=history_events["id"],
                     user_email=self.user_email,
+                    exception=str(e),
                 )
                 raise e
 
@@ -102,6 +111,14 @@ class HandlerFunctionService:
         user_email = self.user_email
         message_id = message["id"]
         message_content = self.gmail.fetch_message_by_id(message_id, "full")
+        
+        if not message_content:
+            # logger.warning(
+            #     "Message with id {message_id} not found for user {user_email}. Skipping...",
+            #     message_id=message_id,
+            #     user_email=user_email,
+            # )
+            return
         # message_subject = self.gmail.get_message_subject(message_content)
         logger.info(
             "Starting to handle message {message_id}. (user {user_email})",

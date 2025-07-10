@@ -210,6 +210,7 @@ def handle_events(cloud_event: CloudEvent):
     handler = handler_service.HandlerFunctionService(
         gmail=gmail,
         handlers=message_handlers,
+        db=db,
     )
 
     # It starts from the last successful run historyId + 1
@@ -221,28 +222,23 @@ def handle_events(cloud_event: CloudEvent):
         last_success_history_id = handler.sync_events(
             start_history_id, event_history_id
         )
-
-        if last_success_history_id == -1:
-            raise Exception("Performed no synchronization.")
-        if last_success_history_id < event_history_id:
-            raise Exception("Performed partial synchronization.")
-
     except Exception as e:
+        new_history_id = db.get_user_last_history_id(user_email)
+        
         logger.exception(
-            "Failed to sync events for user {user_email}. HistoryId expected: '{expected}', got: '{curr}'",
+            "Failed to sync events for user {user_email}. HistoryId expected: {expected}, got: {curr}",
             user_email=user_email,
             expected=event_history_id,
-            curr=last_success_history_id,
+            curr=new_history_id,
         )
         raise e
 
     finally:
-        # Write the last successful historyId to database
-        db.update_user_last_history_id(user_email, last_success_history_id)
+        new_history_id = db.get_user_last_history_id(user_email)
 
         logger.info(
             "Finished syncing events for user {user_email}. From historyId {start_history_id} to {end_history_id}",
             user_email=user_email,
             start_history_id=start_history_id,
-            end_history_id=last_success_history_id,
+            end_history_id=new_history_id,
         )
