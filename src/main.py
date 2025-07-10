@@ -20,8 +20,8 @@ import default_handlers
 
 setup_logger.setup_logging(os.getenv("ENVIRON", "DEV"), os.getenv("LOG_LEVEL", "DEBUG"))
 
-# logger.info("Initializing function environment.")
-# logger.info("Looking up for environment YAML.")
+logger.info("Initializing function environment.")
+logger.info("Looking up for environment YAML.")
 if Path("env.yaml").exists():
     # logger.info("Found env.yaml file locally. Loading it.")
     env_data = yaml.safe_load(Path("env.yaml").read_text("utf8"))
@@ -29,20 +29,20 @@ else:
     # logger.info("Did not find env.yaml. Fetching file from Cloud Secrets.")
     env_data = gcloud_utils.get_secret_yaml(os.environ["CONFIG_YAML_SECRET_NAME"])
 
-# logger.info("Sending env variables for validation.")
+logger.info("Sending env variables for validation.")
 settings = setup_env.load_and_validate_environment(env_data)
 
-# logger.info(
-#     "Connecting to firestore database '{database}'",
-#     database=settings.FIRESTORE_DATABASE_ID,
-# )
+logger.info(
+    "Connecting to firestore database '{database}'",
+    database=settings.FIRESTORE_DATABASE_ID,
+)
 db = firestore_service.FirestoreService(
     firestore.Client(database=settings.FIRESTORE_DATABASE_ID)
 )
-# logger.info(
-#     "Successfully connected to firestore '{database}'",
-#     database=settings.FIRESTORE_DATABASE_ID,
-# )
+logger.info(
+    "Successfully connected to firestore '{database}'",
+    database=settings.FIRESTORE_DATABASE_ID,
+)
 
 
 def build_gmail_service_from_user_tokens(
@@ -239,11 +239,10 @@ def handle_events(cloud_event: CloudEvent):
     finally:
         # Write the last successful historyId to database
         db.update_user_last_history_id(user_email, last_success_history_id)
-        pass
 
-    logger.info(
-        "Finished syncing events for user {user_email}. From historyId {start_history_id} to {end_history_id}",
-        user_email=user_email,
-        start_history_id=start_history_id,
-        end_history_id=last_success_history_id,
-    )
+        logger.info(
+            "Finished syncing events for user {user_email}. From historyId {start_history_id} to {end_history_id}",
+            user_email=user_email,
+            start_history_id=start_history_id,
+            end_history_id=last_success_history_id,
+        )
