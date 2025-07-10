@@ -24,6 +24,18 @@ class FirestoreService:
         if doc_snapshot.exists:
             return doc_snapshot.to_dict()
         return None
+    
+    def get_user_last_history_id(self, user_email: str) -> int|None:
+        """Retrieves the last historyId for a user."""
+        user_data = self.get_user_data(user_email)
+        
+        if not user_data:
+            raise ValueError(
+                f"Failed to fetch user '{user_email}'. There is no user with this ID."
+            )
+        
+        history_id = user_data.get("lastHistoryId")
+        return int(history_id) if history_id is not None else None
 
     def set_user_data(self, user_email: str, data: dict) -> None:
         """Sets or updates user document data."""
