@@ -57,7 +57,7 @@ class HandlerFunctionService:
                 )
                 break
 
-            logger.debug(
+            logger.info(
                 "Starting to process events from historyId {history_id} (user {user_email})",
                 history_id=current_history_id,
                 user_email=user_email,
@@ -74,7 +74,7 @@ class HandlerFunctionService:
                 )
                 break
 
-            logger.debug(
+            logger.info(
                 "Finished processing events from historyId {history_id} (user {user_email})",
                 history_id=current_history_id,
                 user_email=user_email,
@@ -90,7 +90,7 @@ class HandlerFunctionService:
             try:
                 self._handle_message_added(message)
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "Failed to process message {message_id} from historyId {history_id} (user {user_email})",
                     message_id=message["id"],
                     history_id=history_events["id"],
@@ -103,7 +103,7 @@ class HandlerFunctionService:
         message_id = message["id"]
         message_content = self.gmail.fetch_message_by_id(message_id, "full")
         # message_subject = self.gmail.get_message_subject(message_content)
-        logger.debug(
+        logger.info(
             "Starting to handle message {message_id}. (user {user_email})",
             message_id=message_id,
             user_email=user_email,
@@ -119,7 +119,7 @@ class HandlerFunctionService:
                 )
                 continue
 
-            logger.debug(
+            logger.info(
                 "Message {message_id} matches conditions of handler {handler_name}.",
                 message_id=message_content["id"],
                 handler_name=handler.name,
@@ -128,7 +128,7 @@ class HandlerFunctionService:
 
             handler.handle(message_content)
 
-        logger.debug(
+        logger.info(
             "Finished to handle message {message_id}. (user {user_email})",
             message_id=message_id,
             user_email=user_email,
