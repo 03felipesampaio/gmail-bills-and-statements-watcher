@@ -5,6 +5,7 @@ from datetime import datetime
 from loguru import logger
 from google.oauth2.credentials import Credentials
 from typing import Generator
+from pydantic import TypeAdapter, ValidationError
 import models
 
 class FirestoreService:
@@ -127,6 +128,13 @@ class FirestoreService:
             new=history_id,
             old=current_history_id,
         )
+        
+    ### Message Handlers CRUD Operations ###
+    
+    def _validate_handler_data(self, handler_data: models.MessageHandler) -> None:
+        """Validates the handler data against the MessageHandler model."""
+        adapter = TypeAdapter(models.MessageHandler)
+        adapter.validate_python(handler_data)
 
     def get_user_message_handlers(self, user_email: str) -> Generator[models.MessageHandler, None, None]:
         """
@@ -147,6 +155,8 @@ class FirestoreService:
 
     def create_user_message_handler(self, user_email: str, handler_data: models.MessageHandler) -> str:
         """Create a new message handler for a user. Uses handler name as key. Returns the handler name."""
+        self._validate_handler_data(handler_data)
+        
         handler_name = handler_data.get("name")
         if not handler_name:
             raise ValueError("Handler data must include a 'name' key.")
