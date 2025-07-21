@@ -1,5 +1,6 @@
 from google.oauth2.credentials import Credentials
 from googleapiclient import discovery  # type: ignore
+from googleapiclient.errors import HttpError  # type: ignore
 from loguru import logger
 from collections.abc import Callable
 from typing import Generator
@@ -14,7 +15,7 @@ class GmailService:
 
     def fetch_message_by_id(
         self, message_id: str, format: str = "full"
-    ) -> models.MessageFull:
+    ) -> models.MessageFull | None:
         """
         Retrieve a Gmail message by its ID.
 
@@ -26,15 +27,27 @@ class GmailService:
             dict: The message resource as returned by the Gmail API.
         """
 
-        logger.info(
+        logger.debug(
             f"Fetching message with id '{message_id}' for user '{self.user_email}'"
         )
-        return (
-            self.service.users()
-            .messages()
-            .get(userId="me", id=message_id, format=format)
-            .execute()
-        )
+        
+        try:
+            message = (
+                self.service.users()
+                .messages()
+                .get(userId="me", id=message_id, format=format)
+                .execute()
+            )
+        except HttpError as e:
+            logger.warning(
+                "Failed to fetch message with id '{message_id}' for user '{user_email}': {error}",
+                message_id=message_id,
+                user_email=self.user_email,
+                error=str(e),
+            )
+            return None
+        
+        return message 
 
     def get_message_subject(self, message: models.MessageFull) -> str | None:
         """
@@ -52,9 +65,9 @@ class GmailService:
                 return header.get("value")
         return None
 
-    def watch(self, topic: str) -> models.WatchResponse:
+    def watch(self, topic: str, **kwargs) -> models.WatchResponse:
         res = (
-            self.service.users().watch(userId="me", body={"topicName": topic}).execute()
+            self.service.users().watch(userId="me", body={"topicName": topic, **kwargs}).execute()
         )
 
         return res

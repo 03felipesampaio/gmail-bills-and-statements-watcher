@@ -1,12 +1,17 @@
 from typing import TypedDict, NotRequired, Literal
 
 
+class WatchConfig(TypedDict):
+    labelFilterBehavior: NotRequired[str]
+    labelIds: NotRequired[list[str]]
+
+
 class User(TypedDict):
     email: str
     authTokens: NotRequired[dict]
     currentWatch: NotRequired[dict]
     lastHistoryId: NotRequired[int | str]
-    watchConfig: NotRequired[dict | None]
+    watchConfig: NotRequired[WatchConfig | None]
 
 
 class ConditionRule(TypedDict, total=False):

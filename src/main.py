@@ -18,15 +18,15 @@ import handler_service
 
 import default_handlers
 
-setup_logger.setup_logging(os.getenv("ENVIRON", "DEV"), os.getenv("LOG_LEVEL", "INFO"))
+setup_logger.setup_logging(os.getenv("ENVIRON", "DEV"), os.getenv("LOG_LEVEL", "DEBUG"))
 
 logger.info("Initializing function environment.")
 logger.info("Looking up for environment YAML.")
 if Path("env.yaml").exists():
-    logger.info("Found env.yaml file locally. Loading it.")
+    # logger.info("Found env.yaml file locally. Loading it.")
     env_data = yaml.safe_load(Path("env.yaml").read_text("utf8"))
 else:
-    logger.info("Did not find env.yaml. Fetching file from Cloud Secrets.")
+    # logger.info("Did not find env.yaml. Fetching file from Cloud Secrets.")
     env_data = gcloud_utils.get_secret_yaml(os.environ["CONFIG_YAML_SECRET_NAME"])
 
 logger.info("Sending env variables for validation.")
@@ -121,25 +121,24 @@ def refresh_watch(request):
                     f"User '{user_ref.id}' data was not found. Probably was deleted after the start of this function"
                 )
 
-            if not user_data.get("authTokens"):
-                logger.warning(
-                    "Found no auth tokens for user '{user_id}'. Skipping...",
+            if user_data.get("watchConfig") is None:
+                logger.info(
+                    "User '{user_id}' does not have watchConfig. Skipping refresh.",
                     user_id=user_ref.id,
                 )
                 continue
 
-            # Getting credentials and building Gmail Service for user
+            if not user_data.get("authTokens"):
+                raise ValueError(
+                    f"User '{user_ref.id}' does not have authTokens. Cannot refresh watch."
+                )
 
-            creds = oauth_utils.refresh_user_credentials(
-                user_data["authTokens"], settings.OAUTH_SCOPES
-            )
-            db.set_user_auth_tokens(user_ref.id, creds)
-            gmail = gmail_service.GmailService(
-                gmail_service.build_user_gmail_service(creds), user_ref.id
+            gmail = build_gmail_service_from_user_tokens(
+                user_ref.id, user_data["authTokens"]
             )
 
             # Calling watch() for user
-            watch_res = gmail.watch(settings.PUBSUB_TOPIC)
+            watch_res = gmail.watch(settings.PUBSUB_TOPIC, **user_data["watchConfig"])
 
             # Writing watch response to database
             with db.client.transaction() as transaction:
@@ -218,6 +217,7 @@ def handle_events(cloud_event: CloudEvent):
     handler = handler_service.HandlerFunctionService(
         gmail=gmail,
         handlers=message_handlers,
+        db=db,
     )
 
     # It starts from the last successful run historyId + 1
@@ -229,29 +229,23 @@ def handle_events(cloud_event: CloudEvent):
         last_success_history_id = handler.sync_events(
             start_history_id, event_history_id
         )
-
-        if last_success_history_id == -1:
-            raise Exception("Performed no synchronization.")
-        if last_success_history_id < event_history_id:
-            raise Exception("Performed partial synchronization.")
-
     except Exception as e:
+        new_history_id = db.get_user_last_history_id(user_email)
+
         logger.exception(
-            "Failed to sync events for user {user_email}. HistoryId expected: '{expected}', got: '{curr}'",
+            "Failed to sync events for user {user_email}. HistoryId expected: {expected}, got: {curr}",
             user_email=user_email,
             expected=event_history_id,
-            curr=last_success_history_id,
+            curr=new_history_id,
         )
         raise e
 
     finally:
-        # Write the last successful historyId to database
-        db.update_user_last_history_id(user_email, last_success_history_id)
-        pass
+        new_history_id = db.get_user_last_history_id(user_email)
 
-    logger.info(
-        "Finished syncing events for user {user_email}. From historyId {start_history_id} to {end_history_id}",
-        user_email=user_email,
-        start_history_id=start_history_id,
-        end_history_id=last_success_history_id,
-    )
+        logger.info(
+            "Finished syncing events for user {user_email}. From historyId {start_history_id} to {end_history_id}",
+            user_email=user_email,
+            start_history_id=start_history_id,
+            end_history_id=new_history_id,
+        )
