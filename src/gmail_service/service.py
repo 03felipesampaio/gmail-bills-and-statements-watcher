@@ -65,9 +65,9 @@ class GmailService:
                 return header.get("value")
         return None
 
-    def watch(self, topic: str) -> models.WatchResponse:
+    def watch(self, topic: str, **kwargs) -> models.WatchResponse:
         res = (
-            self.service.users().watch(userId="me", body={"topicName": topic}).execute()
+            self.service.users().watch(userId="me", body={"topicName": topic, **kwargs}).execute()
         )
 
         return res
