@@ -144,7 +144,7 @@ class MessageConditions:
 
         return True  # No rule specified, so it matches
 
-    def _check_subject(self, conditions_dict: models.Conditions, message: gmail_models.MessageFull) -> str:
+    def _check_subject(self, conditions_dict: models.Conditions, message: gmail_models.MessageFull) -> bool:
         """
         Checks if the message subject matches the condition rule.
 
@@ -162,7 +162,7 @@ class MessageConditions:
 
     def _check_from(
         self, conditions_dict: models.Conditions, message: gmail_models.MessageFull
-    ) -> str:
+    ) -> bool:
         """
         Checks if the message sender matches the condition rule.
         This checks both the name and email address of the sender.
@@ -214,6 +214,7 @@ class MessageConditions:
         conditions_handlers = {
             "subject": self._check_subject,
             "from_": self._check_from,
+            "filename": self._check_filename,
             # "to": lambda m: [parseaddr(addr)[1] for addr in self._get_header_value(payload_headers, "To").split(",")],
             # "cc": lambda m: [parseaddr(addr)[1] for addr in self._get_header_value(payload_headers, "Cc").split(",")],
             # "bcc": lambda m: [parseaddr(addr)[1] for addr in self._get_header_value(payload_headers, "Bcc").split(",")],
@@ -281,15 +282,25 @@ class MessageConditions:
                 value = rule.get("equal") or rule.get("contains")
                 query_parts.append(f'subject:"{value}"')
             if "startswith" in rule:
-                query_parts.append(f'subject:"{rule["startswith"]}*"')
+                query_parts.append(f'subject:"{rule["startswith"]}"')
             if "endswith" in rule:
-                query_parts.append(f'subject:"*{rule["endswith"]}"')
+                query_parts.append(f'subject:"{rule["endswith"]}"')
         # From
         if "from_" in cond:
             rule = cond["from_"]
             if "equal" in rule or "contains" in rule:
                 value = rule.get("equal") or rule.get("contains")
                 query_parts.append(f'from:"{value}"')
+        # Filename (Gmail supports filename: query)
+        if "filename" in cond:
+            rule = cond["filename"]
+            if "equal" in rule or "contains" in rule:
+                value = rule.get("equal") or rule.get("contains")
+                query_parts.append(f'filename:"{value}"')
+            if "startswith" in rule:
+                query_parts.append(f'filename:"{rule["startswith"]}"')
+            if "endswith" in rule:
+                query_parts.append(f'filename:"{rule["endswith"]}"')
         return query_parts
 
     def _logical_group_to_query(self, group: dict) -> str:
