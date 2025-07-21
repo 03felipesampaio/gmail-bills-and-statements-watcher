@@ -1,13 +1,65 @@
 import models
 import gmail_service.models as gmail_models
 from email.utils import parseaddr
-from datetime import datetime, timedelta
+from datetime import timedelta
 import re
 
 
 class MessageConditions:
-    """
-    A wrapper class that encapsulates the filter logic.
+    """MessageConditions encapsulates the logic for filtering Gmail messages based on a flexible set of conditions.
+
+    This class supports both simple field-based conditions (such as subject, sender, recipients, attachment presence, etc.)
+    and complex logical groupings (AND, OR, NOT) of such conditions. It is designed to work with Gmail API message objects
+    and custom filter condition models.
+
+    Main Features:
+    --------------
+    - Parse and evaluate filter conditions on Gmail messages, including:
+        * Header fields (subject, from, to, cc, bcc)
+        * Attachment filenames
+        * Presence of attachments
+        * Message size
+        * Date-based conditions (after, before, older, newer)
+        * Label IDs
+    - Support for logical grouping of conditions using AND, OR, and NOT operators.
+    - Recursive evaluation of nested logical groups.
+    - Utility methods for extracting header values, filenames, and parsing durations.
+
+    Args:
+        condition (models.FilterCondition): The filter condition or logical group to evaluate.
+
+    Methods:
+        check_message(message: gmail_models.MessageFull) -> bool:
+            Evaluates whether the given Gmail message matches the filter conditions encapsulated by this instance.
+
+    Internal Methods:
+        _parse_duration(duration_str: str) -> timedelta:
+
+        _get_header_value(headers: list[gmail_models.MessagePartHeader], name: str) -> str:
+            Retrieves the value of a specific header from the message.
+
+        _extract_all_filenames(payload: gmail_models.MessagePayload) -> list[str]:
+            Recursively extracts all filenames from the message payload.
+
+        _check_condition_rule(field_value: str | list[str], rule: models.ConditionRule) -> bool:
+            Checks if a field value matches a given rule (equality, substring, etc.).
+
+        _check_conditions(conditions_dict: models.Conditions, message: gmail_models.MessageFull) -> bool:
+            Evaluates all simple conditions (implicit AND) against the message.
+
+        _check_logical_group(group_dict: models.LogicalConditionGroup, message: gmail_models.MessageFull) -> bool:
+            Recursively evaluates logical groups (AND, OR, NOT) of conditions.
+
+    Usage Example:
+    --------------
+        filter_condition = {...}  # models.FilterCondition instance or dict
+        message = {...}           # gmail_models.MessageFull instance or dict
+
+        matcher = MessageConditions(filter_condition)
+        if matcher.check_message(message):
+            # Message matches the filter
+            ...
+    --------------
     """
 
     def __init__(self, condition: models.FilterCondition):
@@ -51,7 +103,7 @@ class MessageConditions:
         for header in headers:
             if header["name"].lower() == name.lower():
                 return header["value"]
-        return ""
+        raise ValueError(f"Header '{name}' not found in message headers.")
 
     def _extract_all_filenames(self, payload: gmail_models.MessagePayload) -> list[str]:
         """
@@ -71,9 +123,9 @@ class MessageConditions:
         """
         Checks if a message field's value matches a ConditionRule.
         """
-        if isinstance(field_value, list):
-            # Join list of strings for substring checks
-            field_value = " ".join(field_value)
+        # if isinstance(field_value, list):
+        #     # Join list of strings for substring checks
+        #     field_value = " ".join(field_value)
 
         if "equal" in rule:
             return field_value == rule["equal"]
@@ -92,100 +144,90 @@ class MessageConditions:
 
         return True  # No rule specified, so it matches
 
+    def _check_subject(self, conditions_dict: models.Conditions, message: gmail_models.MessageFull) -> str:
+        """
+        Checks if the message subject matches the condition rule.
+
+        Args:
+            message (gmail_models.MessageFull): The Gmail message to check.
+
+        Returns:
+            bool: True if the sender matches the condition rule, False otherwise.
+        """
+        msg_subject = self._get_header_value(message["payload"]["headers"], "Subject")
+
+        return self._check_condition_rule(
+            msg_subject, conditions_dict["subject"]
+        )
+
+    def _check_from(
+        self, conditions_dict: models.Conditions, message: gmail_models.MessageFull
+    ) -> str:
+        """
+        Checks if the message sender matches the condition rule.
+        This checks both the name and email address of the sender.
+
+        Args:
+            message (gmail_models.MessageFull): The Gmail message to check.
+
+        Returns:
+            bool: True if the sender matches the condition rule, False otherwise.
+        """
+        name, email = parseaddr(
+            self._get_header_value(message["payload"]["headers"], "From")
+        )
+
+        from_condition = conditions_dict["from_"]
+
+        return any(
+            [
+                self._check_condition_rule(name, from_condition),
+                self._check_condition_rule(email, from_condition),
+            ]
+        )
+        
+    def _check_filename(
+        self, conditions_dict: models.Conditions, message: gmail_models.MessageFull
+    ) -> bool:
+        """
+        Checks if any filename in the message payload matches the condition rule.
+
+        Args:
+            message (gmail_models.MessageFull): The Gmail message to check.
+
+        Returns:
+            bool: True if any filename matches the condition rule, False otherwise.
+        """
+        all_filenames = self._extract_all_filenames(message["payload"])
+        
+        return any(
+            self._check_condition_rule(filename, conditions_dict["filename"])
+            for filename in all_filenames
+        )
+
     def _check_conditions(
         self, conditions_dict: models.Conditions, message: gmail_models.MessageFull
     ) -> bool:
         """
         Checks if a message matches all conditions in a Conditions dictionary (implicit AND).
         """
-        payload_headers = message["payload"]["headers"]
+        conditions_handlers = {
+            "subject": self._check_subject,
+            "from_": self._check_from,
+            # "to": lambda m: [parseaddr(addr)[1] for addr in self._get_header_value(payload_headers, "To").split(",")],
+            # "cc": lambda m: [parseaddr(addr)[1] for addr in self._get_header_value(payload_headers, "Cc").split(",")],
+            # "bcc": lambda m: [parseaddr(addr)[1] for addr in self._get_header_value(payload_headers, "Bcc").split(",")],
+        }
 
-        for key, rule_value in conditions_dict.items():
-            # Check fields that use ConditionRule (now extracted from headers)
-            if key == "subject":
-                subject_value = self._get_header_value(payload_headers, "Subject")
-                if not self._check_condition_rule(subject_value, rule_value):  # type: ignore
-                    return False
-            elif key == "from_":
-                from_value = parseaddr(self._get_header_value(payload_headers, "From"))[
-                    1
-                ]  # Extract email address
-                if not self._check_condition_rule(from_value, rule_value):  # type: ignore
-                    return False
-            elif key in ["to", "cc", "bcc"]:
-                # Extract email addresses from headers and check
-                header_value = self._get_header_value(payload_headers, key)
-                recipients = [parseaddr(addr)[1] for addr in header_value.split(",")]
-                if not self._check_condition_rule(recipients, rule_value):  # type: ignore
-                    return False
-            elif key == "filename":
-                # Check all filenames in the payload recursively
-                all_filenames = self._extract_all_filenames(message["payload"])
-                # This check should pass if ANY filename matches the rule
-                if not any(
-                    self._check_condition_rule(f, rule_value) for f in all_filenames  # type: ignore
-                ):
-                    return False
+        for key in conditions_dict:
+            handler = conditions_handlers.get(key)
+            if not handler:
+                raise NotImplementedError(f"Unknown condition key: {key}")
 
-            # Check 'has' condition
-            elif key == "has":
-                # Check for attachments in the payload
-                has_attachment = any(
-                    part.get("body", {}).get("attachmentId")
-                    for part in message["payload"].get("parts", [])
-                )
-                # Note: 'youtube', 'drive', etc. would require checking the snippet or body content.
-                # For this implementation, we'll only check for attachment existence based on the payload structure.
-                if "attachment" in rule_value and not has_attachment:  # type: ignore
-                    return False
-
-            # Check 'category' condition - This data is not in MessageFull, requires an external check
-            # We will assume a 'category' key is available at the top level for demonstration
-            elif key == "category":
-                # This field would need to be added to MessageFull or derived from labels.
-                # For now, let's assume it's directly available.
-                # if message.get('category') not in rule_value:  # type: ignore
-                #     return False
-                pass  # Skipping this check as the field is not in the provided MessageFull
-
-            # Check date/duration conditions using internalDate
-            elif key in ["after", "before", "older", "newer"]:
-                internal_date_ms = int(message["internalDate"])
-                message_date = datetime.fromtimestamp(
-                    internal_date_ms / 1000
-                )  # Convert ms to datetime
-
-                if key == "after":
-                    after_date = datetime.strptime(rule_value, "%Y/%m/%d")  # type: ignore
-                    if message_date <= after_date:
-                        return False
-                elif key == "before":
-                    before_date = datetime.strptime(rule_value, "%Y/%m/%d")  # type: ignore
-                    if message_date >= before_date:
-                        return False
-                elif key == "older":
-                    duration = self._parse_duration(rule_value)  # type: ignore
-                    if message_date >= datetime.now() - duration:
-                        return False
-                elif key == "newer":
-                    duration = self._parse_duration(rule_value)  # type: ignore
-                    if message_date <= datetime.now() - duration:
-                        return False
-
-            # Check size conditions
-            elif key == "min_size_bytes":
-                if message["sizeEstimate"] < rule_value:  # type: ignore
-                    return False
-            elif key == "max_size_bytes":
-                if message["sizeEstimate"] > rule_value:  # type: ignore
-                    return False
-
-            # Check label_ids
-            elif key == "label_ids":
-                if isinstance(rule_value, str):
-                    rule_value = [rule_value]  # type: ignore
-                if not any(label in message["labelIds"] for label in rule_value):  # type: ignore
-                    return False
+            handler_value = handler(conditions_dict, message)
+            
+            if not handler_value:
+                return False
 
         return True  # All conditions matched
 
