@@ -66,3 +66,25 @@ class TestMessageConditions:
     ])
     def test_subject_and_from_(self, cond, msg, expected):
         assert MessageConditions(cond).check_message(msg) == expected
+
+    @pytest.mark.parametrize("cond,expected", [
+        ( {"subject": {"equal": "Invoice"}}, 'subject:"Invoice"' ),
+        ( {"from_": {"equal": "sender@example.com"}}, 'from:"sender@example.com"' ),
+        ( {"subject": {"contains": "Report"}, "from_": {"contains": "noreply@"}}, 'subject:"Report" from:"noreply@"' ),
+        ( {"subject": {"startswith": "Hello"}}, 'subject:"Hello*"' ),
+        ( {"subject": {"endswith": "World"}}, 'subject:"*World"' ),
+        ( {"operator": "AND", "conditions": [
+            {"subject": {"equal": "Invoice"}},
+            {"from_": {"equal": "sender@example.com"}}
+        ]}, '(subject:"Invoice") (from:"sender@example.com")' ),
+        ( {"operator": "OR", "conditions": [
+            {"subject": {"equal": "Invoice"}},
+            {"from_": {"equal": "sender@example.com"}}
+        ]}, '(subject:"Invoice") OR (from:"sender@example.com")' ),
+        ( {"operator": "NOT", "conditions": [
+            {"subject": {"equal": "Invoice"}},
+            {"from_": {"equal": "sender@example.com"}}
+        ]}, '-(subject:"Invoice") -(from:"sender@example.com")' ),
+    ])
+    def test_to_gmail_query(self, cond, expected):
+        assert MessageConditions(cond).to_gmail_query() == expected

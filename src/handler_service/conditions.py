@@ -271,3 +271,51 @@ class MessageConditions:
         else:
             # It's a simple conditions dictionary (leaf node)
             return self._check_conditions(self.condition, message)
+
+    def _build_query(self, cond: dict) -> list[str]:
+        query_parts = []
+        # Subject
+        if "subject" in cond:
+            rule = cond["subject"]
+            if "equal" in rule or "contains" in rule:
+                value = rule.get("equal") or rule.get("contains")
+                query_parts.append(f'subject:"{value}"')
+            if "startswith" in rule:
+                query_parts.append(f'subject:"{rule["startswith"]}*"')
+            if "endswith" in rule:
+                query_parts.append(f'subject:"*{rule["endswith"]}"')
+        # From
+        if "from_" in cond:
+            rule = cond["from_"]
+            if "equal" in rule or "contains" in rule:
+                value = rule.get("equal") or rule.get("contains")
+                query_parts.append(f'from:"{value}"')
+        return query_parts
+
+    def _logical_group_to_query(self, group: dict) -> str:
+        operator = group["operator"]
+        conditions = group["conditions"]
+        queries = [
+            f'({" ".join(self._build_query(c))})' if isinstance(c, dict) and "operator" not in c else f'({self._logical_group_to_query(c)})'
+            for c in conditions
+        ]
+        if operator == "AND":
+            return " ".join(queries)
+        elif operator == "OR":
+            return " OR ".join(queries)
+        elif operator == "NOT":
+            # Gmail does not support NOT directly, so use '-' before each query
+            return " ".join([f'-{q}' for q in queries])
+        return ""
+
+    def to_gmail_query(self) -> str:
+        """
+        Converts the filter condition to a Gmail API query string (supports logical operators AND, OR, NOT for subject and from_).
+        Returns:
+            str: Gmail-compatible query string.
+        """
+        cond = self.condition
+        if isinstance(cond, dict) and "operator" in cond and "conditions" in cond:
+            return self._logical_group_to_query(cond)
+        else:
+            return " ".join(self._build_query(cond))
