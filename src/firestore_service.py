@@ -5,6 +5,7 @@ from datetime import datetime
 from loguru import logger
 from google.oauth2.credentials import Credentials
 from typing import Generator
+from pydantic import TypeAdapter, ValidationError
 import models
 
 class FirestoreService:
@@ -127,11 +128,107 @@ class FirestoreService:
             new=history_id,
             old=current_history_id,
         )
+        
+    ### Message Handlers CRUD Operations ###
+    
+    def _validate_handler_data(self, handler_data: models.MessageHandler) -> None:
+        """Validates the handler data against the MessageHandler model."""
+        adapter = TypeAdapter(models.MessageHandler)
+        adapter.validate_python(handler_data)
 
     def get_user_message_handlers(self, user_email: str) -> Generator[models.MessageHandler, None, None]:
+        """
+        Retrieves all message handlers for a user.
+        
+        Args:
+            user_email (str): The email of the user whose handlers are to be retrieved.
+            
+        Returns:
+            Generator[models.MessageHandler]: A generator yielding MessageHandler instances.
+        """
         handlers_ref = self.get_user_reference(user_email).collection("messageHandlers")
         
         for handler_doc in handlers_ref.stream():
             handler_data = handler_doc.to_dict()
             handler_data["id"] = handler_doc.id
             yield handler_data
+
+    def create_user_message_handler(self, user_email: str, handler_data: models.MessageHandler) -> str:
+        """
+        Create a new message handler for a user. Uses handler name as key.
+
+        Args:
+            user_email (str): The email of the user.
+            handler_data (models.MessageHandler): The handler data to store.
+
+        Returns:
+            str: The name of the created handler.
+
+        Raises:
+            ValueError: If handler_data does not include a 'name' key or if a handler with the same name already exists.
+            ValidationError: If handler_data does not match the MessageHandler model.
+        """
+        self._validate_handler_data(handler_data)
+        handler_name = handler_data.get("name")
+        if not handler_name:
+            raise ValueError("Handler data must include a 'name' key.")
+        handlers_ref = self.get_user_reference(user_email).collection("messageHandlers")
+        doc_ref = handlers_ref.document(handler_name)
+        if doc_ref.get().exists:
+            raise ValueError(f"Handler with name '{handler_name}' already exists for user '{user_email}'.")
+        doc_ref.set(handler_data)
+        return handler_name
+
+    def get_user_message_handler(self, user_email: str, handler_name: str) -> models.MessageHandler | None:
+        """
+        Get a specific message handler by name.
+
+        Args:
+            user_email (str): The email of the user.
+            handler_name (str): The name of the handler to retrieve.
+
+        Returns:
+            models.MessageHandler | None: The handler data if found, else None.
+        """
+        handlers_ref = self.get_user_reference(user_email).collection("messageHandlers")
+        doc_ref = handlers_ref.document(handler_name)
+        doc_snapshot = doc_ref.get()
+        if doc_snapshot.exists:
+            data = doc_snapshot.to_dict()
+            return data
+        return None
+
+    def update_user_message_handler(self, user_email: str, handler_name: str, handler_data: models.MessageHandler) -> None:
+        """
+        Update a message handler for a user by name.
+
+        Args:
+            user_email (str): The email of the user.
+            handler_name (str): The name of the handler to update.
+            handler_data (models.MessageHandler): The new handler data.
+
+        Returns:
+            None
+
+        Raises:
+            ValidationError: If handler_data does not match the MessageHandler model.
+        """
+        self._validate_handler_data(handler_data)
+        handlers_ref = self.get_user_reference(user_email).collection("messageHandlers")
+        doc_ref = handlers_ref.document(handler_name)
+        doc_ref.set(handler_data, merge=True)
+
+    def delete_user_message_handler(self, user_email: str, handler_name: str) -> None:
+        """
+        Delete a message handler for a user by name.
+
+        Args:
+            user_email (str): The email of the user.
+            handler_name (str): The name of the handler to delete.
+
+        Returns:
+            None
+        """
+        handlers_ref = self.get_user_reference(user_email).collection("messageHandlers")
+        doc_ref = handlers_ref.document(handler_name)
+        doc_ref.delete()

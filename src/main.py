@@ -120,7 +120,14 @@ def refresh_watch(request):
                 raise ValueError(
                     f"User '{user_ref.id}' data was not found. Probably was deleted after the start of this function"
                 )
-                
+
+            if user_data.get("watchConfig") is None:
+                logger.info(
+                    "User '{user_id}' does not have watchConfig. Skipping refresh.",
+                    user_id=user_ref.id,
+                )
+                continue
+
             if not user_data.get("authTokens"):
                 raise ValueError(
                     f"User '{user_ref.id}' does not have authTokens. Cannot refresh watch."
@@ -131,7 +138,7 @@ def refresh_watch(request):
             )
 
             # Calling watch() for user
-            watch_res = gmail.watch(settings.PUBSUB_TOPIC)
+            watch_res = gmail.watch(settings.PUBSUB_TOPIC, **user_data["watchConfig"])
 
             # Writing watch response to database
             with db.client.transaction() as transaction:
@@ -224,7 +231,7 @@ def handle_events(cloud_event: CloudEvent):
         )
     except Exception as e:
         new_history_id = db.get_user_last_history_id(user_email)
-        
+
         logger.exception(
             "Failed to sync events for user {user_email}. HistoryId expected: {expected}, got: {curr}",
             user_email=user_email,
